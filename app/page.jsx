@@ -1,88 +1,91 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Check, Menu, X, MessageCircle, Sparkles, Clock3, Layers3, Printer } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowUpRight, Menu, X, MessageCircle, Printer, Search, SlidersHorizontal } from "lucide-react";
 
-const WA = "https://wa.me/6282246926544?text=" + encodeURIComponent("Halo Kak, saya ingin bertanya tentang layanan Subur Maju Printing.");
-const services = [
-  { no: "01", title: "Banner & Spanduk", desc: "Untuk promosi, acara, toko, dan kebutuhan ruang usaha.", image: "photo-1531058020387-3be344556be6", tag: "Promosi luar ruang" },
-  { no: "02", title: "Stiker & Label", desc: "Bantu produk tampil lebih rapi, mudah dikenali, dan berkarakter.", image: "photo-1634942536790-2531a9b7c3b4", tag: "Identitas produk" },
-  { no: "03", title: "Kebutuhan Bisnis", desc: "Materi cetak untuk mendukung komunikasi dan aktivitas brand.", image: "photo-1586953208448-b95a79798f07", tag: "Cetak kebutuhan usaha" },
+const WA_NUMBER = "6282246926544";
+const products = [
+  { id: 1, name: "Banner & Spanduk", category: "Promosi", desc: "Untuk toko, acara, promosi, dan kebutuhan luar ruang.", image: "photo-1509223197845-458d87318791", tag: "Promosi" },
+  { id: 2, name: "Stiker & Label", category: "Stiker", desc: "Label produk, stiker logo, kemasan, dan kebutuhan branding.", image: "photo-1634942536790-2531a9b7c3b4", tag: "Produk bisnis" },
+  { id: 3, name: "Kartu Nama", category: "Bisnis", desc: "Identitas profesional untuk bisnis dan kebutuhan networking.", image: "photo- card-business", tag: "Bisnis" },
+  { id: 4, name: "Brosur & Flyer", category: "Promosi", desc: "Materi promosi untuk dibagikan ke pelanggan.", image: "photo-1586953208448-b95a79798f07", tag: "Promosi" },
+  { id: 5, name: "Poster", category: "Promosi", desc: "Materi visual untuk toko, acara, dan informasi produk.", image: "photo-1541701494587-cb58502866ab", tag: "Promosi" },
+  { id: 6, name: "Undangan", category: "Kebutuhan khusus", desc: "Cetak undangan untuk acara dan momen spesial.", image: "photo-1519741497674-611481863552", tag: "Acara" },
+  { id: 7, name: "Kemasan & Packaging", category: "Bisnis", desc: "Tanyakan opsi cetak untuk kebutuhan kemasan produk.", image: "photo-1607082349566-187342175e2f", tag: "Produk bisnis" },
+  { id: 8, name: "Dokumen & Buku", category: "Kebutuhan khusus", desc: "Kebutuhan cetak dokumen, booklet, dan materi presentasi.", image: "photo-1455390582262-044c732e152e", tag: "Cetak dokumen" },
 ];
-const photo = (id, width = 1200) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=85`;
+const categories = ["Semua", "Promosi", "Stiker", "Bisnis", "Kebutuhan khusus"];
+const photo = (id) => id === "photo- card-business"
+  ? "https://images.unsplash.com/photo-1503602642458-232111445657?auto=format&fit=crop&w=900&q=80"
+  : `https://images.unsplash.com/${id}?auto=format&fit=crop&w=900&q=80`;
+const orderLink = (name) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(`Halo Kak, saya ingin tanya harga ${name} di Subur Maju Printing. Boleh info pilihan ukuran, bahan, minimum order, dan estimasi pengerjaannya?`) }`;
 
 export default function Home() {
+  const [category, setCategory] = useState("Semua");
+  const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const closeMenu = () => setMenuOpen(false);
+  const visibleProducts = useMemo(() => products.filter((product) =>
+    (category === "Semua" || product.category === category) &&
+    (product.name + " " + product.desc).toLowerCase().includes(query.toLowerCase())
+  ), [category, query]);
+
   return (
     <main>
-      <header className="nav-shell">
-        <a href="#home" className="brand" onClick={closeMenu} aria-label="Subur Maju Printing, beranda">
-          <span className="brand-mark"><Printer size={19} strokeWidth={1.7} /></span>
-          <span className="brand-copy"><strong>SUBUR MAJU</strong><small>PRINTING · JAKARTA</small></span>
+      <header className="site-header">
+        <a href="#home" className="brand" aria-label="Subur Maju Printing beranda">
+          <span className="brand-icon"><Printer size={20} /></span>
+          <span><strong>SUBUR MAJU</strong><small>PRINTING · JAKARTA TIMUR</small></span>
         </a>
-        <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Tutup menu" : "Buka menu"}>{menuOpen ? <X /> : <Menu />}</button>
-        <nav className={menuOpen ? "nav-links nav-open" : "nav-links"}>
-          <a href="#layanan" onClick={closeMenu}>Layanan</a>
-          <a href="#tentang" onClick={closeMenu}>Tentang kami</a>
-          <a href="#proses" onClick={closeMenu}>Cara pesan</a>
-          <a className="nav-cta" href={WA} target="_blank" rel="noreferrer" onClick={closeMenu}>Konsultasi <ArrowUpRight size={15} /></a>
+        <button className="mobile-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Tutup menu" : "Buka menu"}>{menuOpen ? <X /> : <Menu />}</button>
+        <nav className={menuOpen ? "main-nav nav-visible" : "main-nav"}>
+          <a href="#katalog" onClick={() => setMenuOpen(false)}>Katalog</a>
+          <a href="#cara-pesan" onClick={() => setMenuOpen(false)}>Cara pesan</a>
+          <a className="header-order" href={orderLink("layanan percetakan")} target="_blank" rel="noreferrer" onClick={() => setMenuOpen(false)}>Tanya harga <ArrowUpRight size={16}/></a>
         </nav>
       </header>
 
-      <section className="hero" id="home">
-        <div className="hero-image" role="img" aria-label="Suasana produksi percetakan profesional" />
-        <div className="hero-shade" />
-        <div className="hero-content">
-          <div className="eyebrow light"><span className="eyebrow-dot" /> DIGITAL PRINTING · JAKARTA TIMUR</div>
-          <h1>Ide bagus<br />layak <em>terlihat.</em></h1>
-          <p className="hero-lead">Kami membantu ide, bisnis, dan momen pentingmu hadir dalam bentuk cetakan yang nyata.</p>
-          <div className="hero-actions">
-            <a href="#layanan" className="button button-light">Jelajahi layanan <ArrowDownRight size={17} /></a>
-            <a href={WA} target="_blank" rel="noreferrer" className="hero-text-link">Bicarakan kebutuhanmu <ArrowUpRight size={15} /></a>
+      <section className="catalog-hero" id="home">
+        <div className="hero-copy">
+          <span className="eyebrow"><i /> KATALOG PRODUK PERCETAKAN</span>
+          <h1>Mau cetak<br /><em>apa hari ini?</em></h1>
+          <p>Temukan kebutuhan cetak untuk promosi, usaha, acara, dan lainnya. Pilih produk, lalu tanya harga langsung lewat WhatsApp.</p>
+          <a className="primary-button" href="#katalog">Lihat katalog <ArrowUpRight size={17}/></a>
+          <div className="hero-trust"><span>01</span> PILIH PRODUK <b>·</b> TANYA HARGA <b>·</b> SEPAKATI DETAIL</div>
+        </div>
+        <div className="hero-photo" role="img" aria-label="Contoh produk cetak untuk promosi dan bisnis">
+          <span className="photo-label">IDE CETAK, JADI NYATA.</span>
+        </div>
+      </section>
+
+      <section className="catalog-section" id="katalog">
+        <div className="catalog-heading">
+          <div><span className="section-label">PILIH SESUAI KEBUTUHAN</span><h2>Katalog <em>produk.</em></h2></div>
+          <p>Belum tahu spesifikasinya? Santai, tanya dulu. Kami bantu diskusikan kebutuhan cetakmu.</p>
+        </div>
+        <div className="catalog-controls">
+          <div className="category-list" aria-label="Filter kategori">
+            {categories.map((item) => <button key={item} className={category === item ? "category-chip active" : "category-chip"} onClick={() => setCategory(item)}>{item}</button>)}
           </div>
+          <label className="search-box"><Search size={17}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari produk..." aria-label="Cari produk"/></label>
         </div>
-        <div className="hero-caption"><span>01 / PRINT WITH PURPOSE</span><span>IDEA → FORM → IMPACT</span></div>
-        <div className="hero-stamp"><Sparkles size={16} /><span>DETAIL<br />MATTERS</span></div>
+        <div className="result-line"><span><SlidersHorizontal size={14}/> {visibleProducts.length} produk</span><span>Gambar merupakan ilustrasi</span></div>
+        {visibleProducts.length ? <div className="product-grid">
+          {visibleProducts.map((product) => <article className="product-card" key={product.id}>
+            <a className="product-photo" href={orderLink(product.name)} target="_blank" rel="noreferrer" aria-label={`Tanya harga ${product.name}`} style={{ backgroundImage: `url("${photo(product.image)}")` }}>
+              <span className="product-tag">{product.tag}</span><span className="photo-arrow"><ArrowUpRight size={18}/></span>
+            </a>
+            <div className="product-info"><h3>{product.name}</h3><p>{product.desc}</p><div className="product-bottom"><span className="price-note">Harga sesuai spesifikasi</span><a href={orderLink(product.name)} target="_blank" rel="noreferrer">Tanya harga <ArrowUpRight size={15}/></a></div></div>
+          </article>)}
+        </div> : <div className="empty-state">Produk belum ditemukan. Coba kata kunci lain atau pilih kategori “Semua”.</div>}
+        <div className="custom-order"><div><span className="section-label">PUNYA KEBUTUHAN LAIN?</span><h3>Belum ada di katalog?</h3><p>Hubungi kami untuk mendiskusikan jenis cetak, ukuran, jumlah, dan tenggat yang kamu butuhkan.</p></div><a className="primary-button" href={orderLink("produk di luar katalog")} target="_blank" rel="noreferrer">Tanya produk lain <MessageCircle size={17}/></a></div>
       </section>
 
-      <section className="intro section-pad" id="tentang">
-        <div className="section-kicker"><span>01</span><span>LEBIH DARI SEKADAR CETAK</span></div>
-        <div className="intro-grid">
-          <h2>Dari sebuah ide,<br />menjadi <em>sesuatu</em><br />yang bisa disentuh.</h2>
-          <div className="intro-copy"><p>Setiap materi cetak membawa pesan. Kami hadir untuk membantu pesan itu tampil dengan jelas—mulai dari kebutuhan promosi hingga detail yang membentuk identitas bisnismu.</p><a className="under-link" href={WA} target="_blank" rel="noreferrer">Ceritakan kebutuhanmu <ArrowUpRight size={16} /></a></div>
-        </div>
-        <div className="values-row">
-          <div><span className="value-icon"><Check size={17}/></span><strong>Komunikasi jelas</strong><p>Kebutuhan dibahas sebelum produksi.</p></div>
-          <div><span className="value-icon"><Layers3 size={17}/></span><strong>Beragam kebutuhan</strong><p>Pilihan cetak untuk banyak keperluan.</p></div>
-          <div><span className="value-icon"><Clock3 size={17}/></span><strong>Respons cepat</strong><p>Hubungi tim untuk diskusi dan estimasi.</p></div>
-        </div>
+      <section className="order-section" id="cara-pesan">
+        <div className="order-intro"><span className="section-label light-label">CARA PESAN</span><h2>Gampang kok,<br /><em>mulai dari chat.</em></h2><p>Belum perlu tahu semua detail. Ceritakan dulu kebutuhanmu, nanti kita bahas bersama.</p><a href={orderLink("kebutuhan cetak")} target="_blank" rel="noreferrer" className="primary-button light-button">Chat Subur Maju <MessageCircle size={17}/></a></div>
+        <ol className="order-steps"><li><span>01</span><div><strong>Pilih produk</strong><p>Cari produk yang sesuai di katalog.</p></div></li><li><span>02</span><div><strong>Tanya harga</strong><p>Kirim kebutuhan dan tanyakan pilihan bahan atau ukuran.</p></div></li><li><span>03</span><div><strong>Konfirmasi pesanan</strong><p>Sepakati harga, jumlah, dan estimasi sebelum produksi.</p></div></li></ol>
       </section>
 
-      <section className="services section-pad" id="layanan">
-        <div className="section-kicker"><span>02</span><span>APA YANG BISA KAMI CETAK</span></div>
-        <div className="services-heading"><h2>Wujudkan ide.<br /><em>Cetak dampaknya.</em></h2><p>Mulai dari satu kebutuhan sederhana hingga materi untuk mendukung bisnismu. Temukan layanan yang sesuai, lalu konsultasikan detailnya dengan kami.</p></div>
-        <div className="service-grid">{services.map((item) => <article className="service-card" key={item.no}>
-          <a href={WA} target="_blank" rel="noreferrer" className="service-image" aria-label={`Tanyakan layanan ${item.title}`} style={{ backgroundImage: `url("${photo(item.image, 900)}")` }}>
-            <span className="service-number">{item.no}</span><span className="service-arrow"><ArrowUpRight size={20}/></span>
-          </a>
-          <div className="service-meta">{item.tag}</div><h3>{item.title}</h3><p>{item.desc}</p>
-          <a href={WA} target="_blank" rel="noreferrer" className="card-link">Tanya layanan <ArrowRight size={15}/></a>
-        </article>)}</div>
-        <div className="catalog-note"><span>Belum menemukan yang dicari?</span><a href={WA} target="_blank" rel="noreferrer">Tanyakan kebutuhan cetak lainnya <ArrowUpRight size={16}/></a></div>
-      </section>
-
-      <section className="process section-pad" id="proses">
-        <div className="process-image" role="img" aria-label="Detail bahan dan proses produksi cetak" />
-        <div className="process-content"><div className="section-kicker light"><span>03</span><span>SESEDERHANA ITU</span></div><h2>Dari ngobrol<br />sampai <em>jadi.</em></h2><p className="process-lead">Punya kebutuhan cetak? Kita mulai dari percakapan yang jelas.</p>
-          <ol className="steps"><li><span>01</span><div><strong>Ceritakan kebutuhan</strong><p>Jenis produk, ukuran, jumlah, dan tenggat.</p></div></li><li><span>02</span><div><strong>Diskusikan detail</strong><p>Kami bantu membahas spesifikasi dan estimasi.</p></div></li><li><span>03</span><div><strong>Lanjutkan pesanan</strong><p>Sepakati detail sebelum proses produksi dimulai.</p></div></li></ol>
-          <a href={WA} target="_blank" rel="noreferrer" className="button button-light">Mulai konsultasi <ArrowUpRight size={17}/></a>
-        </div>
-      </section>
-
-      <section className="closing section-pad"><div className="closing-orbit">SM<span>✳</span></div><div className="section-kicker"><span>04</span><span>IDE KAMU, LANGKAH PERTAMA KITA</span></div><h2>Ada yang ingin<br /><em>kamu cetak?</em></h2><p>Ceritakan rencanamu. Kami bantu diskusikan kebutuhan dan pilihan cetaknya.</p><a href={WA} target="_blank" rel="noreferrer" className="button button-dark">Hubungi Subur Maju <MessageCircle size={17}/></a></section>
-
-      <footer className="footer"><a href="#home" className="brand footer-brand"><span className="brand-mark"><Printer size={19}/></span><span className="brand-copy"><strong>SUBUR MAJU</strong><small>PRINTING · JAKARTA</small></span></a><span className="footer-note">CETAK DENGAN TUJUAN.</span><span className="footer-copy">© {new Date().getFullYear()} Subur Maju Printing</span></footer>
+      <footer className="site-footer"><a href="#home" className="brand"><span className="brand-icon"><Printer size={19}/></span><span><strong>SUBUR MAJU</strong><small>PRINTING · JAKARTA TIMUR</small></span></a><span className="footer-note">KATALOG PERCETAKAN</span><span className="copyright">© {new Date().getFullYear()} Subur Maju Printing</span></footer>
     </main>
   );
 }
