@@ -7,7 +7,7 @@ const WA_NUMBER = "6282246926544";
 const products = [
   { id: 1, name: "Banner & Spanduk", category: "Promosi", desc: "Untuk toko, acara, promosi, dan kebutuhan luar ruang.", image: "photo-1509223197845-458d87318791", tag: "Promosi" },
   { id: 2, name: "Stiker & Label", category: "Stiker", desc: "Label produk, stiker logo, kemasan, dan kebutuhan branding.", image: "photo-1634942536790-2531a9b7c3b4", tag: "Produk bisnis" },
-  { id: 3, name: "Kartu Nama", category: "Bisnis", desc: "Identitas profesional untuk bisnis dan kebutuhan networking.", image: "photo- card-business", tag: "Bisnis" },
+  { id: 3, name: "Kartu Nama", category: "Bisnis", desc: "Identitas profesional untuk bisnis dan kebutuhan networking.", image: "photo-1544816155-12df9643f363", tag: "Bisnis" },
   { id: 4, name: "Brosur & Flyer", category: "Promosi", desc: "Materi promosi untuk dibagikan ke pelanggan.", image: "photo-1586953208448-b95a79798f07", tag: "Promosi" },
   { id: 5, name: "Poster", category: "Promosi", desc: "Materi visual untuk toko, acara, dan informasi produk.", image: "photo-1541701494587-cb58502866ab", tag: "Promosi" },
   { id: 6, name: "Undangan", category: "Kebutuhan khusus", desc: "Cetak undangan untuk acara dan momen spesial.", image: "photo-1519741497674-611481863552", tag: "Acara" },
@@ -15,9 +15,7 @@ const products = [
   { id: 8, name: "Dokumen & Buku", category: "Kebutuhan khusus", desc: "Kebutuhan cetak dokumen, booklet, dan materi presentasi.", image: "photo-1455390582262-044c732e152e", tag: "Cetak dokumen" },
 ];
 const categories = ["Semua", "Promosi", "Stiker", "Bisnis", "Kebutuhan khusus"];
-const photo = (id) => id === "photo- card-business"
-  ? "https://images.unsplash.com/photo-1503602642458-232111445657?auto=format&fit=crop&w=900&q=80"
-  : `https://images.unsplash.com/${id}?auto=format&fit=crop&w=900&q=80`;
+const photo = (id) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=900&q=80`;
 const orderLink = (name) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(`Halo Kak, saya ingin tanya harga ${name} di Subur Maju Printing. Boleh info pilihan ukuran, bahan, minimum order, dan estimasi pengerjaannya?`) }`;
 
 export default function Home() {
