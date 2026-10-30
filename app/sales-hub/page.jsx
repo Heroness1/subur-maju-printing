@@ -12,7 +12,7 @@ import "./sales-hub.css";
 
 const STORAGE_KEY = "smp-sales-hub-v1";
 const PRICE_DEFAULT = 68000;
-const STATUSES = ["New", "Qualified", "Draft ready", "Narahubunged", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
+const STATUSES = ["New", "Qualified", "Draft ready", "Contacted", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
 const NAV = [
   ["Overview", LayoutDashboard], ["Pencarian perusahaan", Search], ["Database prospek", Building2], ["Pipeline penjualan", Target],
   ["Studio email", Mail], ["Tindak lanjut", CalendarClock], ["Penawaran harga", FileText], ["Keuangan", CircleDollarSign]
@@ -101,7 +101,7 @@ export default function SalesHubPage() {
     return haystack.includes(query.toLowerCase()) && (statusFilter === "Semua status" || lead.status === statusFilter);
   }), [leads, query, statusFilter]);
 
-  const totalPipeline penjualan = leads.filter((x) => !["Won", "Lost", "Opt-out"].includes(x.status)).reduce((sum, x) => sum + (Number(x.qty) || 0) * (Number(x.price) || PRICE_DEFAULT), 0);
+  const totalPipeline = leads.filter((x) => !["Won", "Lost", "Opt-out"].includes(x.status)).reduce((sum, x) => sum + (Number(x.qty) || 0) * (Number(x.price) || PRICE_DEFAULT), 0);
   const wonRevenue = leads.filter((x) => x.status === "Won").reduce((sum, x) => sum + (Number(x.poValue ?? ((Number(x.qty) || 0) * (Number(x.price) || PRICE_DEFAULT))) || 0), 0);
   const totalExpenses = expenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   const commissionPayable = wonRevenue * 0.25;
@@ -153,7 +153,7 @@ export default function SalesHubPage() {
     setLeads((current) => current.map((x) => x.id === id ? { ...x, poValue: parsed, updated: today() } : x));
   }
   function markSent(lead) {
-    setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: "Narahubunged", sentDate: today(), followup: x.followup || new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) } : x));
+    setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: "Contacted", sentDate: today(), followup: x.followup || new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) } : x));
     notify("Status diperbarui. Pastikan email memang sudah dikirim.");
   }
   async function copyText(value, label) {
@@ -229,8 +229,8 @@ export default function SalesHubPage() {
         </header>
 
         <div className="hub-content">
-          {active === "Overview" && <Overview leads={leads} totalPipeline penjualan={totalPipeline penjualan} wonRevenue={wonRevenue} interested={interested} followups={followups} onAdd={() => {setEditing(null);setShowForm(true);}} onNavigate={setActive} onEmail={openEmail} />}
-          {active === "Pencarian perusahaan" && <PerusahaanFinder industry={finderIndustry} setIndustry={setFinderIndustry} area={finderArea} setArea={setFinderArea} onAdd={(industry, area, research={}) => {setEditing({company:"",industry,area,qty:1000,price:PRICE_DEFAULT,status:"New",...research});setShowForm(true);}} />}
+          {active === "Overview" && <Overview leads={leads} totalPipeline={totalPipeline} wonRevenue={wonRevenue} interested={interested} followups={followups} onAdd={() => {setEditing(null);setShowForm(true);}} onNavigate={setActive} onEmail={openEmail} />}
+          {active === "Pencarian perusahaan" && <CompanyFinder industry={finderIndustry} setIndustry={setFinderIndustry} area={finderArea} setArea={setFinderArea} onAdd={(industry, area, research={}) => {setEditing({company:"",industry,area,qty:1000,price:PRICE_DEFAULT,status:"New",...research});setShowForm(true);}} />}
           {active === "Database prospek" && <section className="hub-page">
             <PageHeading eyebrow="DATABASE PERUSAHAAN" title="Database prospek" description="Simpan perusahaan target, PIC, sumber kontak, dan kebutuhan kalender." action={<button className="btn-primary" onClick={() => {setEditing(null);setShowForm(true);}}><Plus size={16}/> Tambah prospek</button>}/>
             <div className="toolbar"><label className="search-field"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari nama perusahaan, industri, atau narahubung..."/></label><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option>Semua status</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select><button className="btn-secondary" onClick={exportCsv}><Download size={15}/> Ekspor CSV</button><label className="btn-secondary file-import"><ArrowDownToLine size={15}/> Impor CSV<input type="file" accept=".csv,text/csv" onChange={importCsv}/></label></div>
@@ -247,7 +247,7 @@ export default function SalesHubPage() {
               <article><span>Nilai aktual peluang aktif</span><b>{money(leads.filter(x=>!["Won","Lost","Opt-out"].includes(x.status)&&x.poValue!==undefined&&x.poValue!=="").reduce((a,x)=>a+(Number(x.poValue)||0),0))}</b></article>
               <article><span>Nilai PO dari deal berhasil</span><b>{money(wonRevenue)}</b></article>
             </div>
-            <div className="pipeline-grid">{["New","Qualified","Draft ready","Narahubunged","Interested","Negotiation","Won"].map((status) => <div className="pipeline-column" key={status}><div className="pipeline-col-head"><span>{status}</span><b>{leads.filter((x) => x.status === status).length}</b></div>{leads.filter((x) => x.status === status).map((lead) => {const estimate=Number(lead.qty||0)*Number(lead.price||PRICE_DEFAULT);const hasActual=lead.poValue!==undefined&&lead.poValue!=="";return <article className="pipeline-card" key={lead.id}><b>{lead.company}</b><small>{lead.industry || "Industry not set"} · {Number(lead.qty || 0).toLocaleString("id-ID")} pcs</small><div className="pipeline-estimate"><span>Estimasi nilai</span><strong>{money(estimate)}</strong></div><label className="pipeline-actual-field"><span>Nilai deal aktual (Rp)</span><input type="number" min="0" step="1000" value={hasActual?lead.poValue:""} placeholder="Belum diisi" onChange={e=>updateDealValue(lead.id,e.target.value)}/></label><span className={hasActual?"pipeline-value-status actual":"pipeline-value-status"}>{hasActual?"Nilai aktual tersimpan":"Masih menggunakan estimasi"}</span><select value={lead.status} onChange={(e) => updateStatus(lead.id,e.target.value)}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select><button className="text-action" onClick={() => openEmail(lead)}>Buka draft email <ArrowUpRight size={13}/></button></article>})}</div>)}</div>
+            <div className="pipeline-grid">{["New","Qualified","Draft ready","Contacted","Interested","Negotiation","Won"].map((status) => <div className="pipeline-column" key={status}><div className="pipeline-col-head"><span>{status}</span><b>{leads.filter((x) => x.status === status).length}</b></div>{leads.filter((x) => x.status === status).map((lead) => {const estimate=Number(lead.qty||0)*Number(lead.price||PRICE_DEFAULT);const hasActual=lead.poValue!==undefined&&lead.poValue!=="";return <article className="pipeline-card" key={lead.id}><b>{lead.company}</b><small>{lead.industry || "Industry not set"} · {Number(lead.qty || 0).toLocaleString("id-ID")} pcs</small><div className="pipeline-estimate"><span>Estimasi nilai</span><strong>{money(estimate)}</strong></div><label className="pipeline-actual-field"><span>Nilai deal aktual (Rp)</span><input type="number" min="0" step="1000" value={hasActual?lead.poValue:""} placeholder="Belum diisi" onChange={e=>updateDealValue(lead.id,e.target.value)}/></label><span className={hasActual?"pipeline-value-status actual":"pipeline-value-status"}>{hasActual?"Nilai aktual tersimpan":"Masih menggunakan estimasi"}</span><select value={lead.status} onChange={(e) => updateStatus(lead.id,e.target.value)}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select><button className="text-action" onClick={() => openEmail(lead)}>Buka draft email <ArrowUpRight size={13}/></button></article>})}</div>)}</div>
             <p className="muted-help">Isi nilai aktual saat harga final sudah disepakati. Untuk deal Won, nilai PO aktual menjadi dasar omzet dan komisi Keuangan. Kosongkan jika belum ada angka final. Lost dan Opt-out tidak ditampilkan sebagai kolom peluang aktif.</p>
           </section>}
           {active === "Studio email" && <section className="hub-page">
@@ -403,7 +403,7 @@ function StatusPill({status}) { const cls = String(status||"New").toLowerCase().
 function EmptyState({title,text,action}) { return <div className="empty-state"><span className="empty-icon"><ClipboardList size={20}/></span><b>{title}</b><p>{text}</p>{action}</div>; }
 
 
-function PerusahaanFinder({industry,setIndustry,area,setArea,onAdd}) {
+function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
   const [companyName,setPerusahaanName] = useState("");
   const [companyDomain,setPerusahaanDomain] = useState("");
   const [picName,setPicName] = useState("");
@@ -478,19 +478,19 @@ function PerusahaanFinder({industry,setIndustry,area,setArea,onAdd}) {
     <div className="finder-segments"><div className="panel-head"><div><b>Priority segments</b><small>Mulai dari kelompok akun ini</small></div><Target size={18}/></div><div className="segment-grid">{[{id:"manufacturing",name:"Manufacturing",why:"Employee gifts, distributor network, vendor gifts."},{id:"property",name:"Property",why:"Informasi pelanggan handover, sales gallery, partner gifts."},{id:"finance",name:"Keuangan",why:"Informasi pelanggan appreciation and branch distribution."},{id:"hospitality",name:"Hospitality",why:"Guest relations, partner and staff merchandise."},{id:"distribution",name:"Distribution",why:"Sales teams, resellers and customer gifts."},{id:"corporate",name:"Corporate HQ",why:"Year-end gifts and multi-office procurement."}].map((x)=><button className={industry===x.id?"segment-card selected":"segment-card"} key={x.id} onClick={()=>setIndustry(x.id)}><b>{x.name}</b><small>{x.why}</small></button>)}</div></div>
   </section>;
 }
-function Overview({leads,totalPipeline penjualan,wonRevenue,interested,followups,onAdd,onNavigate,onEmail}) {
+function Overview({leads,totalPipeline,wonRevenue,interested,followups,onAdd,onNavigate,onEmail}) {
   const active = leads.filter((x)=>!["Won","Lost","Opt-out"].includes(x.status));
-  const sent = leads.filter((x)=>["Narahubunged","Interested","Negotiation","Won"].includes(x.status)).length;
+  const sent = leads.filter((x)=>["Contacted","Interested","Negotiation","Won"].includes(x.status)).length;
   const cards = [
     ["Active prospects",active.length,Building2,"Across your target accounts"],
-    ["Pipeline penjualan value",money(totalPipeline penjualan),CircleDollarSign,"Open opportunity estimate"],
+    ["Pipeline penjualan value",money(totalPipeline),CircleDollarSign,"Open opportunity estimate"],
     ["Interested",interested,MessageSquare,"Interested + negotiation"],
     ["Won revenue",money(wonRevenue),TrendingUp,"Closed-won estimated value"]
   ];
   return <section className="hub-page">
     <div className="welcome-row"><div><span className="page-eyebrow">SALES COMMAND CENTER · 2027 CAMPAIGN</span><h1>Good work starts<br/><em>with a conversation.</em></h1><p>Kelola prospek corporate, kirim penawaran yang relevan, dan ubah percakapan menjadi purchase order.</p></div><button className="btn-primary" onClick={onAdd}><Plus size={16}/> Tambah prospek</button></div>
     <div className="metric-grid">{cards.map(([label,value,Icon,sub])=><article className="metric-card" key={label}><div className="metric-top"><span>{label}</span><Icon size={17}/></div><b>{value}</b><small>{sub}</small></article>)}</div>
-    <div className="overview-grid"><div className="panel"><div className="panel-head"><div><b>Pipeline penjualan snapshot</b><small>Prospect distribution by stage</small></div><button className="text-action" onClick={()=>onNavigate("Pipeline penjualan")}>View pipeline <ArrowUpRight size={14}/></button></div><div className="stage-list">{["New","Qualified","Draft ready","Narahubunged","Interested","Negotiation","Won"].map((status)=>{const count=leads.filter((x)=>x.status===status).length;const percent=leads.length?Math.round(count/leads.length*100):0;return <div className="stage-row" key={status}><span>{status}</span><div className="stage-track"><i style={{width:percent+"%"}}/></div><b>{count}</b></div>;})}</div><div className="panel-bottom-note"><span><Activity size={14}/> {sent} contacted or beyond</span><span>{leads.length} total prospects</span></div></div>
+    <div className="overview-grid"><div className="panel"><div className="panel-head"><div><b>Pipeline penjualan snapshot</b><small>Prospect distribution by stage</small></div><button className="text-action" onClick={()=>onNavigate("Pipeline penjualan")}>View pipeline <ArrowUpRight size={14}/></button></div><div className="stage-list">{["New","Qualified","Draft ready","Contacted","Interested","Negotiation","Won"].map((status)=>{const count=leads.filter((x)=>x.status===status).length;const percent=leads.length?Math.round(count/leads.length*100):0;return <div className="stage-row" key={status}><span>{status}</span><div className="stage-track"><i style={{width:percent+"%"}}/></div><b>{count}</b></div>;})}</div><div className="panel-bottom-note"><span><Activity size={14}/> {sent} contacted or beyond</span><span>{leads.length} total prospects</span></div></div>
       <div className="panel priority-panel"><div className="panel-head"><div><b>Next actions</b><small>Keep deals moving</small></div><CalendarClock size={18}/></div><div className="priority-highlight"><span className="priority-icon"><CalendarClock size={17}/></span><div><b>{followups.length} follow-ups due</b><small>Review your next conversations</small></div></div>{followups.slice(0,4).map((lead)=><div className="mini-follow" key={lead.id}><span><b>{lead.company}</b><small>{lead.followup} · {lead.contact || "PIC not set"}</small></span><button onClick={()=>onEmail(lead)}><Mail size={14}/></button></div>)}{!followups.length && <div className="empty-inline">No follow-ups due. Add a date after each outreach.</div>}<button className="btn-secondary full-button" onClick={()=>onNavigate("Tindak lanjut")}>Open follow-up center <ArrowUpRight size={14}/></button></div></div>
     <div className="campaign-banner"><div><span>FEATURED CAMPAIGN</span><h2>Calendar meja custom 2027</h2><p>Harga acuan Rp68.000/pcs · MOQ target 1.000 pcs · Produksi sesuai spesifikasi final.</p></div><div className="campaign-target"><small>1.000 PCS ESTIMATED ORDER</small><b>{money(68000000)}</b><span>Indicative gross order value</span></div></div>
     <div className="overview-bottom"><div><b>Start with qualified accounts</b><p>Prioritaskan perusahaan dengan kebutuhan merchandise, hadiah pelanggan, atau distribusi multi-cabang yang bisa diverifikasi.</p></div><button className="btn-secondary" onClick={()=>onNavigate("Database prospek")}><Users size={15}/> Manage prospects</button></div>
