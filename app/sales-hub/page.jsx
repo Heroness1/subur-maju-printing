@@ -54,7 +54,22 @@ export default function SalesHubPage() {
   const [emailDraft, setEmailDraft] = useState({ subject: "", body: "" });
   const [sender, setSender] = useState("Tim Subur Maju Printing");
   const [phone, setPhone] = useState("");
-  const [quote, setQuote] = useState({ company: "", contact: "", qty: 1000, price: PRICE_DEFAULT, notes: "Kalender meja custom 2027; desain dan spesifikasi mengikuti persetujuan final." });
+  const [quote, setQuote] = useState(() => {
+    const date = new Date();
+    const dateKey = date.toISOString().slice(0, 10).replaceAll("-", "");
+    const valid = new Date(date); valid.setDate(valid.getDate() + 14);
+    return {
+      number: "SMP/QTN/" + dateKey + "/" + Math.random().toString(36).slice(2, 6).toUpperCase(),
+      date: date.toISOString().slice(0, 10),
+      validUntil: valid.toISOString().slice(0, 10),
+      company: "", contact: "", email: "", phone: "", address: "",
+      qty: 1000, price: PRICE_DEFAULT, discount: 0, shipping: 0, taxRate: 0,
+      paymentTerms: "Sesuai kesepakatan",
+      productionLeadTime: "Dikonfirmasi setelah desain dan spesifikasi disetujui",
+      delivery: "Biaya dan alamat pengiriman dikonfirmasi terpisah",
+      notes: "Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final."
+    };
+  });
   const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   const [finderIndustry, setFinderIndustry] = useState("manufacturing");
@@ -171,7 +186,12 @@ export default function SalesHubPage() {
     setActive("Quotation");
   }
 
-  const revenueQuote = Number(quote.qty || 0) * Number(quote.price || 0);
+  const revenueQuote = Math.max(0, Number(quote.qty) || 0) * Math.max(0, Number(quote.price) || 0);
+  const discountQuote = Math.min(revenueQuote, Math.max(0, Number(quote.discount) || 0));
+  const taxableQuote = Math.max(0, revenueQuote - discountQuote);
+  const taxQuote = taxableQuote * Math.max(0, Number(quote.taxRate) || 0) / 100;
+  const shippingQuote = Math.max(0, Number(quote.shipping) || 0);
+  const totalQuote = taxableQuote + taxQuote + shippingQuote;
   const commissionQuote = revenueQuote * 0.25;
 
   return (
@@ -220,7 +240,63 @@ export default function SalesHubPage() {
               <div className="panel email-editor"><div className="panel-head"><div><b>Message composer</b><small>Review sebelum mengirim</small></div><span className="draft-tag">DRAFT</span></div><label className="field-label">Subject<input value={emailDraft.subject} onChange={(e) => setEmailDraft({...emailDraft,subject:e.target.value})} placeholder="Subject email"/></label><label className="field-label">Email body<textarea rows="15" value={emailDraft.body} onChange={(e) => setEmailDraft({...emailDraft,body:e.target.value})} placeholder="Pilih prospek untuk generate draft..."/></label><div className="editor-actions"><button className="btn-secondary" disabled={!emailDraft.body} onClick={() => copyText("Subject: "+emailDraft.subject+"\n\n"+emailDraft.body,"Email draft")}><Copy size={15}/> Copy draft</button><button className="btn-primary" disabled={!selected || !selected.email || !emailDraft.body} onClick={gmailDraft}><Mail size={15}/> Open Gmail draft <ArrowUpRight size={14}/></button><button className="btn-quiet" disabled={!selected} onClick={() => markSent(selected)}><Check size={15}/> Mark as sent</button></div></div></div>
           </section>}
           {active === "Follow-ups" && <section className="hub-page"><PageHeading eyebrow="NEXT ACTIONS" title="Follow-up center" description="Jaga ritme komunikasi. Hentikan kontak saat prospek menolak atau meminta opt-out."/><div className="followup-list">{leads.filter((x) => x.followup && !["Won","Lost","Opt-out"].includes(x.status)).sort((a,b)=>a.followup.localeCompare(b.followup)).map((lead) => <div className="followup-row" key={lead.id}><div className="followup-date"><b>{new Date(lead.followup+"T00:00:00").getDate()}</b><small>{new Date(lead.followup+"T00:00:00").toLocaleDateString("id-ID",{month:"short"})}</small></div><div className="followup-info"><b>{lead.company}</b><small>{lead.contact || "PIC belum diisi"} · {lead.email || "Email belum diisi"}</small></div><StatusPill status={lead.status}/><span className={lead.followup <= today() ? "due-label overdue" : "due-label"}>{lead.followup <= today() ? "Due" : "Upcoming"} · {lead.followup}</span><button className="btn-secondary" onClick={() => openEmail(lead)}><Mail size={14}/> Draft</button></div>)}{!leads.some((x)=>x.followup && !["Won","Lost","Opt-out"].includes(x.status)) && <EmptyState title="Belum ada follow-up terjadwal" text="Set tanggal follow-up saat mengedit prospek atau setelah mengirim email pertama."/>}</div></section>}
-          {active === "Quotation" && <section className="hub-page"><PageHeading eyebrow="COMMERCIAL PROPOSAL" title="Quotation builder" description="Buat estimasi penawaran kalender meja custom 2027. Cetak atau simpan sebagai PDF dari browser."/><div className="quote-layout"><div className="panel quote-form"><div className="panel-head"><div><b>Quote details</b><small>Harga indikatif; final setelah spesifikasi disepakati</small></div><FileText size={18}/></div><label className="field-label">Company<input value={quote.company} onChange={(e)=>setQuote({...quote,company:e.target.value})} placeholder="Nama perusahaan"/></label><label className="field-label">PIC / attention<input value={quote.contact} onChange={(e)=>setQuote({...quote,contact:e.target.value})} placeholder="Nama PIC"/></label><div className="field-row"><label className="field-label">Quantity (pcs)<input type="number" min="1" value={quote.qty} onChange={(e)=>setQuote({...quote,qty:e.target.value})}/></label><label className="field-label">Price per pcs (Rp)<input type="number" min="1" value={quote.price} onChange={(e)=>setQuote({...quote,price:e.target.value})}/></label></div><label className="field-label">Scope & notes<textarea rows="4" value={quote.notes} onChange={(e)=>setQuote({...quote,notes:e.target.value})}/></label><div className="quote-tip"><ShieldCheck size={15}/> Harga Rp68.000/pcs adalah acuan awal dari brief, bukan quotation final yang mengikat.</div><button className="btn-primary full-button" onClick={()=>window.print()}><Printer size={16}/> Print / Save PDF</button></div><div className="quote-preview"><div className="quote-paper"><div className="quote-paper-head"><div className="quote-logo"><Printer size={17}/><b>SUBUR MAJU</b></div><span>SALES PROPOSAL · 2027</span></div><div className="quote-title"><small>ESTIMASI PENAWARAN</small><h2>Kalender Meja<br/><em>Custom 2027</em></h2><p>Penawaran kebutuhan corporate merchandise & brand presence.</p></div><div className="quote-meta"><div><small>DISIAPKAN UNTUK</small><b>{quote.company || "Nama Perusahaan"}</b><span>{quote.contact || "Attn. Procurement / Marketing"}</span></div><div><small>TANGGAL</small><b>{new Date().toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"})}</b><span>Ref: SMP-2027-EST</span></div></div><div className="quote-line"><span>PRODUK</span><span>QTY</span><span>HARGA/PCS</span><span>JUMLAH</span></div><div className="quote-product"><b>Kalender Meja Custom 2027</b><span>{Number(quote.qty||0).toLocaleString("id-ID")} pcs</span><span>{money(quote.price)}</span><strong>{money(revenueQuote)}</strong></div><div className="quote-total"><span>ESTIMASI TOTAL</span><b>{money(revenueQuote)}</b></div><div className="quote-notes"><small>CATATAN PENAWARAN</small><p>{quote.notes}</p><p>Harga dan jadwal produksi akan dikonfirmasi setelah spesifikasi, desain, finishing, kemasan, pajak, dan pengiriman disepakati.</p></div><div className="quote-paper-foot"><b>Subur Maju Printing</b><span>Terima kasih atas kesempatan yang diberikan.</span></div></div><div className="commission-card"><span>SIMULASI KOMISI INTERNAL · 25%</span><b>{money(commissionQuote)}</b><small>Dihitung dari estimasi omzet; bukan bagian dari penawaran kepada klien.</small></div></div></div></section>}
+          {active === "Quotation" && <section className="hub-page">
+            <PageHeading eyebrow="COMMERCIAL PROPOSAL" title="Quotation builder" description="Susun penawaran formal, hitung diskon, pajak, dan pengiriman, lalu cetak atau simpan sebagai PDF." action={<button className="btn-secondary" onClick={() => { const d = new Date(); const v = new Date(d); v.setDate(v.getDate()+14); setQuote({number:"SMP/QTN/"+d.toISOString().slice(0,10).replaceAll("-","")+"/"+Math.random().toString(36).slice(2,6).toUpperCase(),date:d.toISOString().slice(0,10),validUntil:v.toISOString().slice(0,10),company:"",contact:"",email:"",phone:"",address:"",qty:1000,price:PRICE_DEFAULT,discount:0,shipping:0,taxRate:0,paymentTerms:"Sesuai kesepakatan",productionLeadTime:"Dikonfirmasi setelah desain dan spesifikasi disetujui",delivery:"Biaya dan alamat pengiriman dikonfirmasi terpisah",notes:"Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final."}); }}><Plus size={15}/> New quotation</button>}/>
+            <div className="quote-layout">
+              <div className="panel quote-form">
+                <div className="panel-head"><div><b>Quotation details</b><small>Lengkapi informasi sebelum dikirim ke klien</small></div><FileText size={18}/></div>
+                <div className="quote-form-section"><b>Document</b><div className="field-row">
+                  <label className="field-label">Quotation number<input value={quote.number} onChange={e=>setQuote({...quote,number:e.target.value})}/></label>
+                  <label className="field-label">Quotation date<input type="date" value={quote.date} onChange={e=>setQuote({...quote,date:e.target.value})}/></label>
+                  <label className="field-label">Valid until<input type="date" value={quote.validUntil} onChange={e=>setQuote({...quote,validUntil:e.target.value})}/></label>
+                </div></div>
+                <div className="quote-form-section"><b>Customer</b>
+                  <label className="field-label">Company name<input value={quote.company} onChange={e=>setQuote({...quote,company:e.target.value})} placeholder="Nama perusahaan"/></label>
+                  <label className="field-label">PIC / attention<input value={quote.contact} onChange={e=>setQuote({...quote,contact:e.target.value})} placeholder="Nama PIC"/></label>
+                  <label className="field-label">Business email<input type="email" value={quote.email} onChange={e=>setQuote({...quote,email:e.target.value})} placeholder="procurement@perusahaan.co.id"/></label>
+                  <label className="field-label">Phone / WhatsApp<input value={quote.phone} onChange={e=>setQuote({...quote,phone:e.target.value})} placeholder="+62..."/></label>
+                  <label className="field-label">Billing / company address<textarea rows="2" value={quote.address} onChange={e=>setQuote({...quote,address:e.target.value})} placeholder="Alamat perusahaan"/></label>
+                </div>
+                <div className="quote-form-section"><b>Product & pricing</b>
+                  <label className="field-label">Product description<input value={quote.product || "Kalender Meja Custom 2027"} onChange={e=>setQuote({...quote,product:e.target.value})}/></label>
+                  <div className="field-row">
+                    <label className="field-label">Quantity (pcs)<input type="number" min="1" value={quote.qty} onChange={e=>setQuote({...quote,qty:e.target.value})}/></label>
+                    <label className="field-label">Price / pcs (Rp)<input type="number" min="0" value={quote.price} onChange={e=>setQuote({...quote,price:e.target.value})}/></label>
+                    <label className="field-label">Discount (Rp)<input type="number" min="0" value={quote.discount} onChange={e=>setQuote({...quote,discount:e.target.value})}/></label>
+                    <label className="field-label">Tax rate (%)<input type="number" min="0" max="100" step="0.01" value={quote.taxRate} onChange={e=>setQuote({...quote,taxRate:e.target.value})}/></label>
+                    <label className="field-label">Shipping (Rp)<input type="number" min="0" value={quote.shipping} onChange={e=>setQuote({...quote,shipping:e.target.value})}/></label>
+                  </div>
+                  <div className="quote-calculation"><span>Subtotal</span><b>{money(revenueQuote)}</b><span>Discount</span><b>− {money(discountQuote)}</b><span>Tax ({Number(quote.taxRate)||0}%)</span><b>{money(taxQuote)}</b><span>Shipping</span><b>{money(shippingQuote)}</b><strong>Grand total</strong><strong>{money(totalQuote)}</strong></div>
+                </div>
+                <div className="quote-form-section"><b>Fulfilment & terms</b>
+                  <label className="field-label">Payment terms<input value={quote.paymentTerms} onChange={e=>setQuote({...quote,paymentTerms:e.target.value})} placeholder="Contoh: 50% DP, pelunasan sebelum pengiriman"/></label>
+                  <label className="field-label">Production lead time<input value={quote.productionLeadTime} onChange={e=>setQuote({...quote,productionLeadTime:e.target.value})}/></label>
+                  <label className="field-label">Delivery terms<input value={quote.delivery} onChange={e=>setQuote({...quote,delivery:e.target.value})}/></label>
+                  <label className="field-label">Product specifications & notes<textarea rows="4" value={quote.notes} onChange={e=>setQuote({...quote,notes:e.target.value})}/></label>
+                </div>
+                <div className="quote-tip"><ShieldCheck size={15}/> Tarif pajak, diskon, biaya kirim, termin pembayaran, dan waktu produksi harus diverifikasi sebelum penawaran diterbitkan. Default pajak dan diskon adalah 0.</div>
+                <button className="btn-primary full-button" onClick={()=>window.print()}><Printer size={16}/> Print / Save PDF</button>
+              </div>
+              <div className="quote-preview">
+                <div className="quote-paper">
+                  <div className="quote-paper-head"><div className="quote-logo"><Printer size={17}/><b>SUBUR MAJU PRINTING</b></div><span>QUOTATION · 2027</span></div>
+                  <div className="quote-doc-meta"><div><small>QUOTATION NO.</small><b>{quote.number}</b></div><div><small>ISSUED DATE</small><b>{quote.date ? new Date(quote.date+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}) : "—"}</b></div><div><small>VALID UNTIL</small><b>{quote.validUntil ? new Date(quote.validUntil+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}) : "—"}</b></div></div>
+                  <div className="quote-title"><small>OFFICIAL PRICE PROPOSAL</small><h2>Kalender Meja<br/><em>Custom 2027</em></h2><p>Penawaran kebutuhan corporate merchandise dan brand presence.</p></div>
+                  <div className="quote-customer"><div><small>PREPARED FOR</small><b>{quote.company || "Nama Perusahaan"}</b><span>{quote.contact ? "Attn. "+quote.contact : "Attn. Procurement / Marketing"}</span>{quote.email && <span>{quote.email}</span>}{quote.phone && <span>{quote.phone}</span>}{quote.address && <span>{quote.address}</span>}</div><div><small>PREPARED BY</small><b>Subur Maju Printing</b><span>Digital Printing & Custom Merchandise</span><span>Jakarta, Indonesia</span></div></div>
+                  <div className="quote-table">
+                    <div className="quote-table-head"><span>DESCRIPTION</span><span>QTY</span><span>UNIT PRICE</span><span>AMOUNT</span></div>
+                    <div className="quote-table-row"><b>{quote.product || "Kalender Meja Custom 2027"}</b><span>{Number(quote.qty||0).toLocaleString("id-ID")} pcs</span><span>{money(quote.price)}</span><strong>{money(revenueQuote)}</strong></div>
+                  </div>
+                  <div className="quote-totals"><div><span>Subtotal</span><b>{money(revenueQuote)}</b></div>{discountQuote>0 && <div><span>Discount</span><b>− {money(discountQuote)}</b></div>}{taxQuote>0 && <div><span>Tax ({Number(quote.taxRate)||0}%)</span><b>{money(taxQuote)}</b></div>}{shippingQuote>0 && <div><span>Shipping</span><b>{money(shippingQuote)}</b></div>}<div className="grand-total"><span>TOTAL ESTIMATED</span><b>{money(totalQuote)}</b></div></div>
+                  <div className="quote-terms"><div><small>PAYMENT TERMS</small><p>{quote.paymentTerms || "—"}</p></div><div><small>PRODUCTION LEAD TIME</small><p>{quote.productionLeadTime || "—"}</p></div><div><small>DELIVERY</small><p>{quote.delivery || "—"}</p></div></div>
+                  <div className="quote-notes"><small>PRODUCT SPECIFICATIONS & NOTES</small><p>{quote.notes || "—"}</p><p>Harga dan jadwal produksi mengikuti spesifikasi final yang disetujui kedua belah pihak. Perubahan jumlah, desain, bahan, finishing, kemasan, atau tujuan pengiriman dapat memengaruhi nilai penawaran.</p></div>
+                  <div className="quote-signatures"><div><small>APPROVED BY CUSTOMER</small><span>Nama, jabatan, dan tanda tangan</span><i/></div><div><small>SUBUR MAJU PRINTING</small><span>Authorized representative</span><i/></div></div>
+                  <div className="quote-paper-foot"><b>Subur Maju Printing</b><span>Terima kasih atas kesempatan yang diberikan.</span></div>
+                </div>
+                <div className="commission-card"><span>SIMULASI KOMISI INTERNAL · 25%</span><b>{money(commissionQuote)}</b><small>Dihitung dari nilai produk sebelum diskon, pajak, dan pengiriman. Hanya untuk perhitungan internal; tidak tercantum dalam quotation klien.</small></div>
+              </div>
+            </div>
+          </section>}
           {active === "Settings" && <section className="hub-page"><PageHeading eyebrow="WORKSPACE PREFERENCES" title="Settings" description="Identitas pengirim untuk draft email dan pengelolaan data lokal."/><div className="panel settings-panel"><label className="field-label">Nama pengirim<input value={sender} onChange={(e)=>setSender(e.target.value)}/></label><label className="field-label">WhatsApp bisnis<input value={phone} onChange={(e)=>setPhone(e.target.value)} placeholder="+62..."/></label><div className="field-note"><ShieldCheck size={15}/> Data prospek hanya tersimpan di local storage browser ini. Belum ada login server, sinkronisasi tim, atau backup cloud.</div><div className="settings-actions"><button className="btn-secondary" onClick={exportCsv}><Download size={15}/> Backup prospek CSV</button><button className="btn-quiet danger" onClick={()=>{if(window.confirm("Hapus seluruh data lokal di browser ini?")){setLeads([]);setSelectedId("");notify("Data lokal dihapus");}}}><Trash2 size={15}/> Hapus semua data lokal</button></div></div></section>}
         </div>
         <footer className="hub-footer"><span>SUBUR MAJU PRINTING · INTERNAL SALES WORKSPACE</span><span>Calendar 2027 campaign</span></footer>
