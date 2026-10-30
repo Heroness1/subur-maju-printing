@@ -413,3 +413,38 @@
   .finance-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
   .pipeline-grid{grid-template-columns:repeat(7,minmax(165px,1fr))}
 }
+
+/* Sales automation center */
+.automation-metrics{margin-bottom:18px}
+.automation-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.85fr);gap:14px;margin-bottom:15px}
+.automation-panel,.automation-queue{padding:19px}
+.readiness-row{display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:7px 14px;padding:13px 0;border-bottom:1px solid var(--hub-line);align-items:center}
+.readiness-main b,.readiness-main small{display:block}
+.readiness-main b{font-size:12px}
+.readiness-main small{font-size:10px;color:#8b948e;margin-top:4px}
+.readiness-score{text-align:right}
+.readiness-score b{font:800 15px var(--hub-display)}
+.readiness-track{height:5px;background:#f0f0f0;border-radius:99px;overflow:hidden;margin-top:5px}
+.readiness-track i{height:100%;display:block;background:var(--hub-orange);border-radius:99px}
+.readiness-missing{grid-column:1/-1;font-size:10px;color:#858e88;line-height:1.5}
+.readiness-row>.text-action{grid-column:1/-1;justify-self:start}
+.cadence-step{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--hub-line)}
+.cadence-step>span{width:29px;height:29px;display:grid;place-items:center;border-radius:8px;background:#fff1e6;color:var(--hub-orange);font-weight:800;font-size:10px}
+.cadence-step b,.cadence-step small{display:block}
+.cadence-step b{font-size:11px}
+.cadence-step small{font-size:10px;color:#858e88;margin-top:4px}
+.automation-note{display:flex;gap:8px;align-items:flex-start;background:#f8f8f8;padding:11px;border-radius:7px;color:#727b75;font-size:10px;line-height:1.6;margin:14px 0}
+.automation-note svg{flex-shrink:0;color:var(--hub-orange)}
+.automation-queue{margin-bottom:14px}
+.automation-queue-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--hub-line)}
+.automation-queue-row>div b,.automation-queue-row>div small{display:block}
+.automation-queue-row>div b{font-size:11px}
+.automation-queue-row>div small{font-size:10px;color:#8b948e;margin-top:4px}
+@media(max-width:760px){
+  .automation-grid{grid-template-columns:minmax(0,1fr);gap:11px}
+  .automation-panel,.automation-queue{padding:14px}
+  .automation-queue-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}
+  .automation-queue-row .due-label{grid-column:1/-1;justify-self:start}
+  .automation-queue-row button{min-height:38px}
+  .readiness-row{grid-template-columns:minmax(0,1fr) 75px}
+}
