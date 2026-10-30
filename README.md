@@ -1,7 +1,6 @@
 # Subur Maju Printing
 
-Website landing page for Subur Maju Printing, inspired by the cinematic, editorial visual language of Kebun Bardja while keeping this project in a separate repository.
-
+Website test for Subur Maju Printing
 ## Stack
 - Next.js App Router
 - React
