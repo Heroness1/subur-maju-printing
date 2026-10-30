@@ -148,6 +148,10 @@ export default function SalesHubPage() {
   function updateStatus(id, status) {
     setLeads((current) => current.map((x) => x.id === id ? { ...x, status, updated: today() } : x));
   }
+  function updateDealValue(id, value) {
+    const parsed = value === "" ? undefined : Math.max(0, Number(value) || 0);
+    setLeads((current) => current.map((x) => x.id === id ? { ...x, poValue: parsed, updated: today() } : x));
+  }
   function markSent(lead) {
     setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: "Contacted", sentDate: today(), followup: x.followup || new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) } : x));
     notify("Status diperbarui. Pastikan email memang sudah dikirim.");
@@ -237,9 +241,14 @@ export default function SalesHubPage() {
             <div className="table-foot">{filtered.length} prospek ditampilkan <span>Data disimpan pada browser/perangkat ini</span></div>
           </section>}
           {active === "Pipeline" && <section className="hub-page">
-            <PageHeading eyebrow="DEAL MANAGEMENT" title="Sales pipeline" description="Pantau setiap peluang dari prospek baru sampai purchase order." action={<button className="btn-primary" onClick={() => {setEditing(null);setShowForm(true);}}><Plus size={16}/> Add prospect</button>}/>
-            <div className="pipeline-grid">{["New","Qualified","Draft ready","Contacted","Interested","Negotiation","Won"].map((status) => <div className="pipeline-column" key={status}><div className="pipeline-col-head"><span>{status}</span><b>{leads.filter((x) => x.status === status).length}</b></div>{leads.filter((x) => x.status === status).map((lead) => <article className="pipeline-card" key={lead.id}><b>{lead.company}</b><small>{lead.industry || "Industry not set"} · {Number(lead.qty || 0).toLocaleString("id-ID")} pcs</small><strong>{money(Number(lead.qty || 0)*Number(lead.price || PRICE_DEFAULT))}</strong><select value={lead.status} onChange={(e) => updateStatus(lead.id,e.target.value)}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select><button className="text-action" onClick={() => openEmail(lead)}>Open email <ArrowUpRight size={13}/></button></article>)}</div>)}</div>
-            <p className="muted-help">Lost dan Opt-out tetap tercatat di database, tetapi tidak ditampilkan sebagai kolom peluang aktif.</p>
+            <PageHeading eyebrow="DEAL MANAGEMENT" title="Sales pipeline" description="Pantau nilai estimasi dan nilai deal aktual. Nilai aktual diisi dari penawaran final atau PO yang disepakati." action={<button className="btn-primary" onClick={() => {setEditing(null);setShowForm(true);}}><Plus size={16}/> Add prospect</button>}/>
+            <div className="pipeline-value-summary">
+              <article><span>Estimated active pipeline</span><b>{money(leads.filter(x=>!["Won","Lost","Opt-out"].includes(x.status)).reduce((a,x)=>a+(Number(x.qty||0)*Number(x.price||PRICE_DEFAULT)),0))}</b></article>
+              <article><span>Actual deal value · active</span><b>{money(leads.filter(x=>!["Won","Lost","Opt-out"].includes(x.status)&&x.poValue!==undefined&&x.poValue!=="").reduce((a,x)=>a+(Number(x.poValue)||0),0))}</b></article>
+              <article><span>Won · actual PO</span><b>{money(wonRevenue)}</b></article>
+            </div>
+            <div className="pipeline-grid">{["New","Qualified","Draft ready","Contacted","Interested","Negotiation","Won"].map((status) => <div className="pipeline-column" key={status}><div className="pipeline-col-head"><span>{status}</span><b>{leads.filter((x) => x.status === status).length}</b></div>{leads.filter((x) => x.status === status).map((lead) => {const estimate=Number(lead.qty||0)*Number(lead.price||PRICE_DEFAULT);const hasActual=lead.poValue!==undefined&&lead.poValue!=="";return <article className="pipeline-card" key={lead.id}><b>{lead.company}</b><small>{lead.industry || "Industry not set"} · {Number(lead.qty || 0).toLocaleString("id-ID")} pcs</small><div className="pipeline-estimate"><span>Estimasi</span><strong>{money(estimate)}</strong></div><label className="pipeline-actual-field"><span>Nilai deal aktual (Rp)</span><input type="number" min="0" step="1000" value={hasActual?lead.poValue:""} placeholder="Belum ditetapkan" onChange={e=>updateDealValue(lead.id,e.target.value)}/></label><span className={hasActual?"pipeline-value-status actual":"pipeline-value-status"}>{hasActual?"Nilai aktual tersimpan":"Menggunakan estimasi"}</span><select value={lead.status} onChange={(e) => updateStatus(lead.id,e.target.value)}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select><button className="text-action" onClick={() => openEmail(lead)}>Open email <ArrowUpRight size={13}/></button></article>})}</div>)}</div>
+            <p className="muted-help">Isi nilai aktual saat harga final sudah disepakati. Untuk deal Won, nilai PO aktual menjadi dasar omzet dan komisi Finance. Kosongkan jika belum ada angka final. Lost dan Opt-out tidak ditampilkan sebagai kolom peluang aktif.</p>
           </section>}
           {active === "Email studio" && <section className="hub-page">
             <PageHeading eyebrow="SEMI-AUTOMATIC OUTREACH" title="Email studio" description="Buat draft personal, periksa semua detail, lalu buka Gmail untuk mengirim secara manual."/>
