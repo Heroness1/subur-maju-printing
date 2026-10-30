@@ -6,7 +6,7 @@ import {
   Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, Download,
   FileText, Filter, LayoutDashboard, Mail, MapPin, Menu, MessageSquare, Linkedin, Globe,
   Plus, Printer, Search, Send, Settings2, ShieldCheck, Target, Trash2,
-  TrendingUp, Users, X
+  TrendingUp, Users, X, Zap, CheckCircle2, Clock3
 } from "lucide-react";
 import "./sales-hub.css";
 
@@ -15,7 +15,7 @@ const PRICE_DEFAULT = 68000;
 const STATUSES = ["New", "Qualified", "Draft ready", "Contacted", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
 const NAV = [
   ["Overview", LayoutDashboard], ["Pencarian perusahaan", Search], ["Database prospek", Building2], ["Pipeline penjualan", Target],
-  ["Studio email", Mail], ["Tindak lanjut", CalendarClock], ["Penawaran harga", FileText], ["Keuangan", CircleDollarSign]
+  ["Studio email", Mail], ["Tindak lanjut", CalendarClock], ["Automasi sales", Zap], ["Penawaran harga", FileText], ["Keuangan", CircleDollarSign]
 ];
 
 const starter = [];
@@ -25,6 +25,25 @@ function money(value) {
 }
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+function dateAfter(days, from = today()) {
+  const date = new Date(from + "T12:00:00");
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+function leadReadiness(lead) {
+  const checks = [
+    [Boolean(lead.website), 10, "Website resmi"],
+    [Boolean(lead.companySourceUrl || lead.sourceUrl), 15, "Sumber perusahaan"],
+    [Boolean(lead.contact), 15, "Nama PIC"],
+    [Boolean(lead.role), 15, "Jabatan PIC"],
+    [Boolean(lead.email), 20, "Email bisnis"],
+    [Boolean(lead.emailSourceUrl), 15, "Sumber email"],
+    [Boolean(lead.researchSummary || lead.reason), 5, "Konteks kebutuhan"],
+    [lead.verificationStatus === "Terverifikasi", 5, "Verifikasi"]
+  ];
+  const score = checks.reduce((total, [ok, points]) => total + (ok ? points : 0), 0);
+  return { score, missing: checks.filter(([ok]) => !ok).map(([, , label]) => label) };
 }
 function makeId() {
   return "SMP-" + Math.random().toString(36).slice(2, 7).toUpperCase();
@@ -153,8 +172,36 @@ export default function SalesHubPage() {
     setLeads((current) => current.map((x) => x.id === id ? { ...x, poValue: parsed, updated: today() } : x));
   }
   function markSent(lead) {
-    setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: "Contacted", sentDate: today(), followup: x.followup || new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) } : x));
-    notify("Status diperbarui. Pastikan email memang sudah dikirim.");
+    setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: "Contacted", sentDate: today(), followupStep: 0, followup: x.followup || dateAfter(3), sequenceComplete: false } : x));
+    notify("Status diperbarui. Follow-up pertama dijadwalkan 3 hari lagi. Pastikan email memang sudah dikirim.");
+  }
+  function scheduleMissingFollowups() {
+    const candidates = leads.filter((lead) => ["Contacted", "Interested", "Negotiation"].includes(lead.status) && !lead.followup && !lead.sequenceComplete);
+    if (!candidates.length) return notify("Tidak ada prospek yang perlu dijadwalkan");
+    setLeads((current) => current.map((lead) => candidates.some((item) => item.id === lead.id) ? { ...lead, followupStep: Number(lead.followupStep || 0), followup: dateAfter(3) } : lead));
+    notify(candidates.length + " prospek dijadwalkan untuk follow-up pertama");
+  }
+  function completeFollowup(lead) {
+    const completed = Number(lead.followupStep || 0) + 1;
+    const nextDelay = completed === 1 ? 7 : 14;
+    setLeads((current) => current.map((item) => item.id !== lead.id ? item : completed >= 3
+      ? { ...item, followup: "", followupStep: completed, sequenceComplete: true, lastFollowupCompleted: today() }
+      : { ...item, followup: dateAfter(nextDelay), followupStep: completed, lastFollowupCompleted: today() }
+    ));
+    notify(completed >= 3 ? "Rangkaian follow-up selesai" : "Follow-up dicatat. Jadwal berikutnya dibuat otomatis " + nextDelay + " hari lagi.");
+  }
+  function openFollowupEmail(lead) {
+    const step = Number(lead.followupStep || 0);
+    const subject = step === 0 ? "Menindaklanjuti penawaran kalender meja 2027 — " + lead.company : step === 1 ? "Apakah penawaran kalender meja 2027 sempat ditinjau?" : "Tindak lanjut terakhir — kalender meja custom 2027";
+    const greeting = lead.contact ? "Yth. " + lead.contact : "Yth. Tim Procurement / Marketing";
+    const body = step === 0
+      ? greeting + ",\\n\\nSaya ingin menindaklanjuti email sebelumnya mengenai kalender meja custom 2027 untuk " + lead.company + ". Apakah penawaran dan informasi awal yang kami kirim sudah sempat ditinjau?\\n\\nJika ada spesifikasi, jumlah, atau kebutuhan desain yang perlu disesuaikan, kami dengan senang hati menyiapkan penawaran yang lebih relevan.\\n\\nTerima kasih atas waktunya.\\nSalam,\\n" + sender + "\\nSubur Maju Printing\\n" + (phone || "[Nomor WhatsApp bisnis]")
+      : step === 1
+        ? greeting + ",\\n\\nIzin menanyakan apakah kebutuhan kalender meja custom 2027 masih relevan untuk perusahaan " + lead.company + ". Kami dapat menyesuaikan detail jumlah, bahan, finishing, dan jadwal produksi berdasarkan kebutuhan perusahaan.\\n\\nBila saat ini belum menjadi prioritas, tidak apa-apa—kami dapat menghubungi kembali pada waktu yang lebih sesuai.\\n\\nSalam,\\n" + sender + "\\nSubur Maju Printing\\n" + (phone || "[Nomor WhatsApp bisnis]")
+        : greeting + ",\\n\\nIni tindak lanjut terakhir dari kami terkait penawaran kalender meja custom 2027. Jika belum ada kebutuhan saat ini, kami akan menutup rangkaian follow-up agar tidak mengganggu.\\n\\nTerima kasih telah meluangkan waktu. Jika kebutuhan muncul di kemudian hari, kami siap membantu.\\n\\nSalam,\\n" + sender + "\\nSubur Maju Printing\\n" + (phone || "[Nomor WhatsApp bisnis]");
+    setSelectedId(lead.id);
+    setEmailDraft({ subject, body });
+    setActive("Studio email");
   }
   async function copyText(value, label) {
     try { await navigator.clipboard.writeText(value); notify(label + " disalin"); }
@@ -256,7 +303,7 @@ export default function SalesHubPage() {
             <div className="email-layout"><div className="panel email-config"><div className="panel-head"><div><b>Penerima dan konteks</b><small>Pilih prospek dari database</small></div><Mail size={18}/></div><label className="field-label">Pilih prospek<select value={selectedId} onChange={(e) => {setSelectedId(e.target.value);const item=leads.find((x)=>x.id===e.target.value);if(item)setEmailDraft(makeEmail(item,sender,phone));}}><option value="">Pilih perusahaan...</option>{leads.filter((x) => x.status !== "Opt-out").map((x) => <option value={x.id} key={x.id}>{x.company} — {x.contact || "Narahubung belum diisi"}</option>)}</select></label>{selected ? <div className="recipient-card"><span className="recipient-icon"><Building2 size={18}/></span><span><b>{selected.company}</b><small>{selected.email || "Email belum diisi"} · {selected.industry || "Industri belum ditentukan"}</small></span><StatusPill status={selected.status}/></div> : <div className="inline-empty">Pilih prospek untuk membuat draft email.</div>}<div className="field-note"><ShieldCheck size={15}/> Email tidak dikirim secara otomatis. Tinjau kembali isi draft, lalu kirim secara manual melalui Gmail.</div></div>
               <div className="panel email-editor"><div className="panel-head"><div><b>Editor pesan</b><small>Periksa kembali sebelum mengirim</small></div><span className="draft-tag">DRAFT</span></div><label className="field-label">Subjek<input value={emailDraft.subject} onChange={(e) => setEmailDraft({...emailDraft,subject:e.target.value})} placeholder="Subjek email"/></label><label className="field-label">Isi email<textarea rows="15" value={emailDraft.body} onChange={(e) => setEmailDraft({...emailDraft,body:e.target.value})} placeholder="Pilih prospek untuk membuat draft email..."/></label><div className="editor-actions"><button className="btn-secondary" disabled={!emailDraft.body} onClick={() => copyText("Subjek: "+emailDraft.subject+"\n\n"+emailDraft.body,"Draft email")}><Copy size={15}/> Salin draft</button><button className="btn-primary" disabled={!selected || !selected.email || !emailDraft.body} onClick={gmailDraft}><Mail size={15}/> Buka draft di Gmail <ArrowUpRight size={14}/></button><button className="btn-quiet" disabled={!selected} onClick={() => markSent(selected)}><Check size={15}/> Tandai telah dikirim</button></div></div></div>
           </section>}
-          {active === "Tindak lanjut" && <section className="hub-page"><PageHeading eyebrow="AGENDA TINDAK LANJUT" title="Agenda tindak lanjut" description="Kelola jadwal komunikasi dengan konsisten. Hentikan tindak lanjut apabila perusahaan menolak penawaran atau meminta untuk tidak dihubungi kembali."/><div className="followup-list">{leads.filter((x) => x.followup && !["Won","Lost","Opt-out"].includes(x.status)).sort((a,b)=>a.followup.localeCompare(b.followup)).map((lead) => <div className="followup-row" key={lead.id}><div className="followup-date"><b>{new Date(lead.followup+"T00:00:00").getDate()}</b><small>{new Date(lead.followup+"T00:00:00").toLocaleDateString("id-ID",{month:"short"})}</small></div><div className="followup-info"><b>{lead.company}</b><small>{lead.contact || "Narahubung belum diisi"} · {lead.email || "Email belum diisi"}</small></div><StatusPill status={lead.status}/><span className={lead.followup <= today() ? "due-label overdue" : "due-label"}>{lead.followup <= today() ? "Jatuh tempo" : "Akan datang"} · {lead.followup}</span><button className="btn-secondary" onClick={() => openEmail(lead)}><Mail size={14}/> Draft</button></div>)}{!leads.some((x)=>x.followup && !["Won","Lost","Opt-out"].includes(x.status)) && <EmptyState title="Belum ada follow-up terjadwal" text="Set tanggal follow-up saat mengedit prospek atau setelah mengirim email pertama."/>}</div></section>}
+          {active === "Tindak lanjut" && <section className="hub-page"><PageHeading eyebrow="AGENDA TINDAK LANJUT" title="Agenda tindak lanjut" description="Jadwal pengingat membantu menjaga ritme komunikasi. Email tetap ditinjau dan dikirim manual oleh kamu." action={<button className="btn-secondary" onClick={scheduleMissingFollowups}><Zap size={14}/> Jadwalkan prospek tanpa agenda</button>}/><div className="followup-list">{leads.filter((x) => x.followup && !["Won","Lost","Opt-out"].includes(x.status)).sort((a,b)=>a.followup.localeCompare(b.followup)).map((lead) => <div className="followup-row" key={lead.id}><div className="followup-date"><b>{new Date(lead.followup+"T00:00:00").getDate()}</b><small>{new Date(lead.followup+"T00:00:00").toLocaleDateString("id-ID",{month:"short"})}</small></div><div className="followup-info"><b>{lead.company}</b><small>{lead.contact || "Narahubung belum diisi"} · {lead.email || "Email belum diisi"} · Tahap {Number(lead.followupStep || 0) + 1}/3</small></div><StatusPill status={lead.status}/><span className={lead.followup <= today() ? "due-label overdue" : "due-label"}>{lead.followup <= today() ? "Jatuh tempo" : "Akan datang"} · {lead.followup}</span><button className="btn-secondary" onClick={() => openFollowupEmail(lead)}><Mail size={14}/> Draft</button><button className="btn-quiet" onClick={() => completeFollowup(lead)}><CheckCircle2 size={14}/> Selesai</button></div>)}{!leads.some((x)=>x.followup && !["Won","Lost","Opt-out"].includes(x.status)) && <EmptyState title="Belum ada follow-up terjadwal" text="Tandai email pertama sudah dikirim atau jadwalkan prospek yang sudah pernah dihubungi."/>}</div></section>}{active === "Automasi sales" && <AutomationCenter leads={leads} onSchedule={scheduleMissingFollowups} onDraft={openFollowupEmail} onComplete={completeFollowup} onNavigate={setActive} />}
           {active === "Keuangan" && <Keuangan leads={leads} expenses={expenses} setExpenses={setExpenses} wonRevenue={wonRevenue} totalExpenses={totalExpenses} commissionPayable={commissionPayable} grossProfit={grossProfit} netProfit={netProfit} notify={notify} />}
           {active === "Penawaran harga" && <section className="hub-page">
             <PageHeading eyebrow="DOKUMEN PENAWARAN" title="Penyusunan penawaran harga" description="Siapkan dokumen penawaran resmi, hitung diskon, pajak, dan biaya pengiriman, lalu cetak atau simpan dalam format PDF." action={<button className="btn-secondary" onClick={() => { const d = new Date(); const v = new Date(d); v.setDate(v.getDate()+14); setQuote({number:"SMP/QTN/"+d.toISOString().slice(0,10).replaceAll("-","")+"/"+Math.random().toString(36).slice(2,6).toUpperCase(),date:d.toISOString().slice(0,10),validUntil:v.toISOString().slice(0,10),company:"",contact:"",email:"",phone:"",address:"",qty:1000,price:PRICE_DEFAULT,discount:0,shipping:0,taxRate:0,paymentTerms:"Sesuai kesepakatan",productionLeadTime:"Dikonfirmasi setelah desain dan spesifikasi disetujui",delivery:"Biaya dan alamat pengiriman dikonfirmasi terpisah",notes:"Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final."}); }}><Plus size={15}/> Buat penawaran baru</button>}/>
@@ -433,6 +480,8 @@ function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
   const searches = [
     {title:"Official company profile",desc:"Pastikan nama legal, website, industri, alamat kantor, dan kanal resmi.",q:exact+" official website company profile Indonesia"},
     {title:"Procurement & vendor registration",desc:"Cari unit purchasing, procurement, sourcing, vendor management, dan halaman pendaftaran vendor.",q:exact+' (procurement OR purchasing OR sourcing OR "vendor management" OR supplier)'},
+    {title:"Vendor portal & supplier onboarding",desc:"Cari portal resmi, formulir registrasi pemasok, e-procurement, dan persyaratan menjadi vendor.",q:exact+' (vendor OR supplier OR procurement) (registration OR onboarding OR portal OR e-procurement OR "daftar vendor" OR "pendaftaran vendor")'},
+    {title:"Procurement policy & supplier requirements",desc:"Cari dokumen resmi tentang proses pengadaan, kualifikasi pemasok, dan kanal pengadaan perusahaan.",q:exact+' (procurement policy OR supplier requirements OR vendor qualification OR tender OR pengadaan)'},
     {title:"Marketing, brand & corporate affairs",desc:"Cari pemilik kebutuhan merchandise, brand activation, komunikasi, dan corporate gift.",q:exact+' (marketing OR "brand manager" OR "corporate communications" OR "public relations" OR "corporate affairs")'},
     {title:"HR, GA & office management",desc:"Cari jalur alternatif untuk employee gift, kalender karyawan, general affairs, dan kebutuhan kantor.",q:exact+' (HR OR "human resources" OR "people and culture" OR "general affairs" OR "office manager" OR "employee engagement")'},
     {title:"PIC on LinkedIn",desc:"Temukan profil orang, lalu cocokkan jabatan dan perusahaan saat ini sebelum mencatatnya.",q:exact+' (procurement OR purchasing OR marketing OR "general affairs" OR HR) site:linkedin.com/in'},
@@ -481,6 +530,55 @@ function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
     <div className="finder-segments"><div className="panel-head"><div><b>Priority segments</b><small>Mulai dari kelompok akun ini</small></div><Target size={18}/></div><div className="segment-grid">{[{id:"manufacturing",name:"Manufacturing",why:"Employee gifts, distributor network, vendor gifts."},{id:"property",name:"Property",why:"Informasi pelanggan handover, sales gallery, partner gifts."},{id:"finance",name:"Keuangan",why:"Informasi pelanggan appreciation and branch distribution."},{id:"hospitality",name:"Hospitality",why:"Guest relations, partner and staff merchandise."},{id:"distribution",name:"Distribution",why:"Sales teams, resellers and customer gifts."},{id:"corporate",name:"Corporate HQ",why:"Year-end gifts and multi-office procurement."}].map((x)=><button className={industry===x.id?"segment-card selected":"segment-card"} key={x.id} onClick={()=>setIndustry(x.id)}><b>{x.name}</b><small>{x.why}</small></button>)}</div></div>
   </section>;
 }
+
+function AutomationCenter({leads,onSchedule,onDraft,onComplete,onNavigate}) {
+  const activeLeads = leads.filter((lead) => !["Won","Lost","Opt-out"].includes(lead.status));
+  const readyLeads = activeLeads.map((lead) => ({lead,...leadReadiness(lead)})).sort((a,b)=>b.score-a.score);
+  const due = leads.filter((lead) => lead.followup && !["Won","Lost","Opt-out"].includes(lead.status)).sort((a,b)=>a.followup.localeCompare(b.followup));
+  const needsSchedule = leads.filter((lead) => ["Contacted","Interested","Negotiation"].includes(lead.status) && !lead.followup && !lead.sequenceComplete);
+  const average = readyLeads.length ? Math.round(readyLeads.reduce((sum,item)=>sum+item.score,0)/readyLeads.length) : 0;
+  return <section className="hub-page">
+    <PageHeading eyebrow="SALES WORKFLOW AUTOMATION" title="Automasi sales" description="Prioritaskan prospek berdasarkan kelengkapan data dan buat rangkaian pengingat follow-up. Sistem tidak mengirim email otomatis; setiap pesan tetap kamu tinjau." action={<button className="btn-primary" onClick={onSchedule}><Zap size={15}/> Jadwalkan {needsSchedule.length} prospek</button>}/>
+    <div className="metric-grid automation-metrics">
+      <article className="metric-card"><div className="metric-top"><span>Prospek aktif</span><Users size={17}/></div><b>{activeLeads.length}</b><small>Belum Won, Lost, atau Opt-out</small></article>
+      <article className="metric-card"><div className="metric-top"><span>Rata-rata kesiapan data</span><Target size={17}/></div><b>{average}%</b><small>Skor kelengkapan CRM</small></article>
+      <article className="metric-card"><div className="metric-top"><span>Perlu dijadwalkan</span><Clock3 size={17}/></div><b>{needsSchedule.length}</b><small>Sudah dihubungi, belum ada agenda</small></article>
+      <article className="metric-card"><div className="metric-top"><span>Follow-up aktif</span><CalendarClock size={17}/></div><b>{due.length}</b><small>Pengingat yang belum selesai</small></article>
+    </div>
+    <div className="automation-grid">
+      <div className="panel automation-panel">
+        <div className="panel-head"><div><b>Lead readiness</b><small>Skor kualitas data, bukan prediksi peluang closing</small></div><ShieldCheck size={18}/></div>
+        {readyLeads.slice(0,8).map(({lead,score,missing})=><div className="readiness-row" key={lead.id}>
+          <div className="readiness-main"><b>{lead.company}</b><small>{lead.contact || "PIC belum ada"} · {lead.role || "Jabatan belum ada"}</small></div>
+          <div className="readiness-score"><b>{score}%</b><div className="readiness-track"><i style={{width:score+"%"}}/></div></div>
+          <div className="readiness-missing">{score===100 ? "Data inti lengkap" : "Lengkapi: "+missing.slice(0,3).join(", ")}</div>
+          <button className="text-action" onClick={()=>onNavigate("Database prospek")}>Buka CRM <ArrowUpRight size={13}/></button>
+        </div>)}
+        {!readyLeads.length && <EmptyState title="Belum ada prospek" text="Tambahkan perusahaan melalui Company Finder untuk mulai mengukur kesiapan datanya." action={<button className="btn-secondary" onClick={()=>onNavigate("Pencarian perusahaan")}>Buka pencarian perusahaan</button>}/>}
+      </div>
+      <div className="panel automation-panel">
+        <div className="panel-head"><div><b>Follow-up cadence</b><small>Pengingat terjadwal, bukan email otomatis</small></div><CalendarClock size={18}/></div>
+        <div className="cadence-step"><span>01</span><div><b>Hari ke-3</b><small>Follow-up pertama setelah email awal</small></div></div>
+        <div className="cadence-step"><span>02</span><div><b>7 hari berikutnya</b><small>Follow-up kedua jika belum ada respons</small></div></div>
+        <div className="cadence-step"><span>03</span><div><b>14 hari berikutnya</b><small>Pesan penutup; rangkaian kemudian selesai</small></div></div>
+        <div className="automation-note"><ShieldCheck size={15}/> Jadwal hanya dibuat untuk status Contacted, Interested, dan Negotiation. Won, Lost, dan Opt-out dikecualikan.</div>
+        <button className="btn-secondary full-button" onClick={()=>onNavigate("Tindak lanjut")}>Buka agenda follow-up <ArrowUpRight size={14}/></button>
+      </div>
+    </div>
+    <div className="panel automation-queue">
+      <div className="panel-head"><div><b>Follow-up queue</b><small>{due.length} agenda aktif · urut dari tanggal terdekat</small></div><button className="text-action" onClick={()=>onNavigate("Tindak lanjut")}>Lihat semua <ArrowUpRight size={13}/></button></div>
+      {due.slice(0,6).map((lead)=><div className="automation-queue-row" key={lead.id}>
+        <div><b>{lead.company}</b><small>{lead.followup} · Tahap {Number(lead.followupStep || 0)+1}/3 · {lead.contact || "PIC belum ada"}</small></div>
+        <span className={lead.followup<=today()?"due-label overdue":"due-label"}>{lead.followup<=today()?"Jatuh tempo":"Akan datang"}</span>
+        <button className="btn-secondary" onClick={()=>onDraft(lead)}><Mail size={14}/> Draft</button>
+        <button className="btn-quiet" onClick={()=>onComplete(lead)}><CheckCircle2 size={14}/> Selesai</button>
+      </div>)}
+      {!due.length && <EmptyState title="Belum ada agenda follow-up" text="Setelah mengirim email pertama dan menandai prospek Contacted, sistem dapat menjadwalkan pengingat pertama."/>}
+    </div>
+    <p className="muted-help">Catatan: skor kesiapan data bersifat rule-based dan transparan. Rangkaian pengingat disimpan di LocalStorage perangkat ini. Email tidak dikirim, balasan tidak dipantau, dan jadwal tidak berjalan di background ketika aplikasi ditutup.</p>
+  </section>;
+}
+
 function Overview({leads,totalPipeline,wonRevenue,interested,followups,onAdd,onNavigate,onEmail}) {
   const active = leads.filter((x)=>!["Won","Lost","Opt-out"].includes(x.status));
   const sent = leads.filter((x)=>["Contacted","Interested","Negotiation","Won"].includes(x.status)).length;
