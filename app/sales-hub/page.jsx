@@ -74,7 +74,7 @@ export default function SalesHubPage() {
   const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   const [finderIndustry, setFinderIndustry] = useState("manufacturing");
-  const [finderArea, setFinderArea] = useState("Jakarta");
+  const [finderArea, setFinderArea] = useState("DKI Jakarta");
 
   useEffect(() => {
     try {
@@ -422,8 +422,10 @@ function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
     corporate:"large companies and corporate headquarters"
   };
   const phrase = labels[industry] || labels.corporate;
-  const query = phrase + " in " + area + " Indonesia procurement marketing corporate gifts";
-  const mapQuery = phrase + " in " + area;
+  const jakartaDistricts = '"Jakarta Pusat" OR "Jakarta Selatan" OR "Jakarta Barat" OR "Jakarta Timur" OR "Jakarta Utara"';
+  const locationQuery = area === "DKI Jakarta" ? "(" + jakartaDistricts + ")" : '"' + area + '" DKI Jakarta';
+  const query = phrase + " in " + locationQuery + " procurement marketing corporate gifts -Tangerang -Bekasi -Depok -Bogor";
+  const mapQuery = phrase + " in " + (area === "DKI Jakarta" ? "DKI Jakarta" : area + ", DKI Jakarta");
   const company = companyName.trim();
   const domain = companyDomain.trim().replace(/^https?:\/\//i,"").replace(/\/.*$/,"");
   const exact = company ? '"' + company + '"' : phrase;
@@ -439,14 +441,14 @@ function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
   ];
   const readyToSave = company.length > 1;
   return <section className="hub-page">
-    <PageHeading eyebrow="ACCOUNT DISCOVERY" title="Pencarian perusahaan" description="Bangun daftar akun berdasarkan kecocokan bisnis, temukan decision-maker, lalu simpan bukti sumbernya ke CRM."/>
+    <PageHeading eyebrow="ACCOUNT DISCOVERY" title="Pencarian perusahaan" description="Cari calon klien yang berlokasi di DKI Jakarta, temukan decision-maker, lalu simpan bukti sumbernya ke CRM."/>
     <div className="finder-layout">
       <div className="panel finder-controls">
         <div className="panel-head"><div><b>Build a search</b><small>Tentukan segmen dan area target</small></div><Search size={18}/></div>
         <label className="field-label">Target industry<select value={industry} onChange={(e)=>setIndustry(e.target.value)}><option value="manufacturing">Manufacturing & factories</option><option value="property">Property & real estate</option><option value="finance">Banking & finance</option><option value="hospitality">Hotels & hospitality</option><option value="distribution">Distribution & FMCG</option><option value="corporate">Large corporate accounts</option></select></label>
-        <label className="field-label">Target area<input value={area} onChange={(e)=>setArea(e.target.value)} placeholder="Jakarta / Jakarta Timur / Bekasi"/></label>
+        <label className="field-label">Wilayah target<select value={area} onChange={(e)=>setArea(e.target.value)}><option value="DKI Jakarta">Seluruh DKI Jakarta</option><option value="Jakarta Pusat">Jakarta Pusat</option><option value="Jakarta Selatan">Jakarta Selatan</option><option value="Jakarta Barat">Jakarta Barat</option><option value="Jakarta Timur">Jakarta Timur</option><option value="Jakarta Utara">Jakarta Utara</option></select></label>
         <div className="finder-query"><small>SEARCH INTENT</small><p>{query}</p></div>
-        <div className="field-note"><ShieldCheck size={15}/> Pencarian hanya membuka sumber publik. Tidak ada scraping, email tidak ditebak, dan hasil belum dianggap verified.</div>
+        <div className="field-note"><ShieldCheck size={15}/> Fokus pencarian hanya DKI Jakarta (Jakarta Pusat, Selatan, Barat, Timur, dan Utara). Perusahaan boleh berkantor pusat di luar Jakarta jika memiliki kantor/cabang di Jakarta; verifikasi alamatnya sebelum disimpan. Tangerang, Bekasi, Depok, dan Bogor tidak termasuk.</div>
       </div>
       <div className="finder-results">
         <article className="finder-card"><span className="finder-number">01</span><div><b>Perusahaan discovery</b><p>Temukan perusahaan dengan banyak karyawan, cabang, pelanggan, atau aktivitas yang masuk akal untuk kalender corporate.</p><a href={searchUrl(query+" official company list")} target="_blank" rel="noreferrer">Find target companies <ArrowUpRight size={14}/></a></div></article>
