@@ -282,3 +282,10 @@
 .research-link-card a{display:inline-flex;align-items:center;gap:5px;color:#d86617;font-size:12px;font-weight:700;text-decoration:none}
 .research-workbench .field-note{margin-top:16px}
 @media(max-width:760px){.research-inputs,.research-grid{grid-template-columns:1fr}}
+
+
+/* Research capture workflow */
+.research-capture{padding-top:18px;border-top:1px solid #eee;margin-top:18px}
+.research-save-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:17px 18px;margin-top:15px;background:#fff8f2;border:1px solid #f2dfd1;border-radius:9px}
+.research-save-row b{font-size:12px;color:#171717}.research-save-row p{font-size:10px;color:#737373;line-height:1.6;margin:5px 0 0}.research-save-row button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:760px){.research-save-row{align-items:stretch;flex-direction:column}.research-save-row button{width:100%;justify-content:center}}
