@@ -182,7 +182,7 @@ export default function SalesHubPage() {
     window.open(url, "_blank", "noopener,noreferrer");
   }
   function setQuoteFromLead(lead) {
-    setQuote({ company: lead.company, contact: lead.contact || "", qty: Number(lead.qty || 1000), price: Number(lead.price || PRICE_DEFAULT), notes: "Kalender meja custom 2027; desain dan spesifikasi mengikuti persetujuan final." });
+    setQuote((current) => ({ ...current, company: lead.company, contact: lead.contact || "", email: lead.email || "", phone: lead.phone || "", qty: Number(lead.qty || 1000), price: Number(lead.price || PRICE_DEFAULT), product: "Kalender Meja Custom 2027", notes: lead.notes || "Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final." }));
     setActive("Quotation");
   }
 
@@ -192,7 +192,7 @@ export default function SalesHubPage() {
   const taxQuote = taxableQuote * Math.max(0, Number(quote.taxRate) || 0) / 100;
   const shippingQuote = Math.max(0, Number(quote.shipping) || 0);
   const totalQuote = taxableQuote + taxQuote + shippingQuote;
-  const commissionQuote = revenueQuote * 0.25;
+  const commissionQuote = taxableQuote * 0.25;
 
   return (
     <main className="hub-shell">
@@ -293,7 +293,7 @@ export default function SalesHubPage() {
                   <div className="quote-signatures"><div><small>APPROVED BY CUSTOMER</small><span>Nama, jabatan, dan tanda tangan</span><i/></div><div><small>SUBUR MAJU PRINTING</small><span>Authorized representative</span><i/></div></div>
                   <div className="quote-paper-foot"><b>Subur Maju Printing</b><span>Terima kasih atas kesempatan yang diberikan.</span></div>
                 </div>
-                <div className="commission-card"><span>SIMULASI KOMISI INTERNAL · 25%</span><b>{money(commissionQuote)}</b><small>Dihitung dari nilai produk sebelum diskon, pajak, dan pengiriman. Hanya untuk perhitungan internal; tidak tercantum dalam quotation klien.</small></div>
+                <div className="commission-card"><span>SIMULASI KOMISI INTERNAL · 25%</span><b>{money(commissionQuote)}</b><small>Simulasi 25% dari nilai produk setelah diskon, sebelum pajak dan pengiriman. Hanya untuk perhitungan internal; tidak tercantum dalam quotation klien.</small></div>
               </div>
             </div>
           </section>}
