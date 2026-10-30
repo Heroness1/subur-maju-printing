@@ -207,6 +207,7 @@ export default function SalesHubPage() {
 
   return (
     <main className="hub-shell">
+      {mobileNav && <button className="mobile-nav-backdrop" aria-label="Tutup menu navigasi" onClick={() => setMobileNav(false)} />}
       <aside className={"hub-sidebar " + (mobileNav ? "hub-sidebar-open" : "")}>
         <a className="hub-brand" href="/"><span className="hub-brand-mark"><Printer size={19}/></span><span><b>SUBUR MAJU</b><small>SALES HUB</small></span></a>
         <div className="hub-workspace"><span className="workspace-dot"/> RUANG KERJA INTERNAL <ChevronDown size={13}/></div>
@@ -223,7 +224,7 @@ export default function SalesHubPage() {
 
       <section className="hub-main">
         <header className="hub-topbar">
-          <button className="mobile-menu-btn" onClick={() => setMobileNav(!mobileNav)} aria-label="Menu"><Menu size={20}/></button>
+          <button className="mobile-menu-btn" onClick={() => setMobileNav(!mobileNav)} aria-label={mobileNav ? "Tutup menu" : "Buka menu"} aria-expanded={mobileNav}><Menu size={20}/></button>
           <div className="breadcrumb">Subur Maju <span>/</span> <b>{active}</b></div>
           <div className="topbar-actions"><span className="top-date"><CalendarClock size={14}/> {new Date().toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</span><button className="icon-button" title="Follow-up jatuh tempo" onClick={() => setActive("Tindak lanjut")}><Bell size={17}/>{followups.length > 0 && <i/>}</button><span className="top-avatar">SM</span></div>
         </header>
