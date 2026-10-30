@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowDownToLine, ArrowUpRight, Bell, Building2, CalendarClock,
   Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, Download,
-  FileText, Filter, LayoutDashboard, Mail, MapPin, Menu, MessageSquare,
+  FileText, Filter, LayoutDashboard, Mail, MapPin, Menu, MessageSquare, Linkedin, Globe,
   Plus, Printer, Search, Send, Settings2, ShieldCheck, Target, Trash2,
   TrendingUp, Users, X
 } from "lucide-react";
@@ -316,6 +316,11 @@ export default function SalesHubPage() {
         <label className="field-label">PIC name<input name="contact" defaultValue={editing?.contact || ""} placeholder="Nama kontak"/></label><label className="field-label">PIC role<input name="role" defaultValue={editing?.role || ""} placeholder="Procurement / Marketing"/></label>
         <label className="field-label span-two">Business email<input type="email" name="email" defaultValue={editing?.email || ""} placeholder="nama@perusahaan.co.id"/></label>
         <label className="field-label span-two">Website<input name="website" defaultValue={editing?.website || ""} placeholder="https://..."/></label>
+        <label className="field-label">Company LinkedIn<input name="companyLinkedin" defaultValue={editing?.companyLinkedin || ""} placeholder="https://linkedin.com/company/..."/></label><label className="field-label">PIC LinkedIn<input name="contactLinkedin" defaultValue={editing?.contactLinkedin || ""} placeholder="https://linkedin.com/in/..."/></label>
+        <label className="field-label">PIC phone<input name="contactPhone" defaultValue={editing?.contactPhone || ""} placeholder="Nomor bisnis publik"/></label><label className="field-label">Company size<input name="companySize" defaultValue={editing?.companySize || ""} placeholder="500–1.000 karyawan"/></label>
+        <label className="field-label span-two">Branch / office footprint<input name="footprint" defaultValue={editing?.footprint || ""} placeholder="20 cabang di Indonesia"/></label>
+        <label className="field-label span-two">Research summary<input name="researchSummary" defaultValue={editing?.researchSummary || ""} placeholder="Profil bisnis, aktivitas, indikasi kebutuhan kalender..."/></label>
+        <label className="field-label span-two">Contact / company source URL<input name="sourceUrl" defaultValue={editing?.sourceUrl || ""} placeholder="URL halaman resmi / profil PIC / direktori publik"/></label>
         <label className="field-label">Lead source<input name="source" defaultValue={editing?.source || ""} placeholder="Website, referral, LinkedIn..."/></label><label className="field-label">Status<select name="status" defaultValue={editing?.status || "New"}>{STATUSES.map((s)=><option key={s}>{s}</option>)}</select></label>
         <label className="field-label">Estimated quantity<input type="number" min="1" name="qty" defaultValue={editing?.qty || 1000}/></label><label className="field-label">Price / pcs (Rp)<input type="number" min="1" name="price" defaultValue={editing?.price || PRICE_DEFAULT}/></label>
         <label className="field-label span-two">Nilai PO final (Rp)<input type="number" min="0" name="poValue" defaultValue={editing?.poValue ?? ""} placeholder="Kosongkan untuk hitung qty × harga"/></label>
@@ -387,6 +392,8 @@ function EmptyState({title,text,action}) { return <div className="empty-state"><
 
 
 function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
+  const [companyName,setCompanyName] = useState("");
+  const [companyDomain,setCompanyDomain] = useState("");
   const labels = {
     manufacturing:"manufacturing companies and factories",
     property:"property developers and real estate companies",
@@ -417,6 +424,24 @@ function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
         {searches.map((item,i)=><article className="finder-card" key={item.title}><span className="finder-number">0{i+1}</span><div><b>{item.title}</b><p>{item.desc}</p><a href={item.url} target="_blank" rel="noreferrer">Open search <ArrowUpRight size={14}/></a></div></article>)}
       </div>
     </div>
+
+    <section className="panel research-workbench">
+      <div className="panel-head"><div><b>Company research & contact enrichment</b><small>Riset satu akun dan temukan decision-maker sebelum outreach</small></div><Users size={18}/></div>
+      <div className="research-inputs">
+        <label className="field-label">Company name<input value={companyName} onChange={e=>setCompanyName(e.target.value)} placeholder="Contoh: PT Astra International Tbk"/></label>
+        <label className="field-label">Official domain (optional)<input value={companyDomain} onChange={e=>setCompanyDomain(e.target.value)} placeholder="astra.co.id"/></label>
+      </div>
+      <div className="research-grid">
+        {[
+          {title:"Procurement / Purchasing",desc:"Cari PIC pengadaan, purchasing, dan vendor management.",q:'"'+companyName+'" procurement OR purchasing OR "vendor management"'},
+          {title:"Marketing / HR / Corporate Affairs",desc:"Cari PIC merchandise, marketing, HR, atau corporate affairs.",q:'"'+companyName+'" marketing OR HR OR "corporate secretary" LinkedIn'},
+          {title:"LinkedIn people",desc:"Temukan profil profesional yang mencantumkan perusahaan ini.",q:companyName+" procurement marketing HR LinkedIn"},
+          {title:"Official contact & vendor page",desc:"Cari email bisnis, halaman kontak, dan pendaftaran vendor resmi.",q:(companyDomain ? "site:"+companyDomain+" " : "")+'"'+companyName+'" contact email vendor supplier'},
+          {title:"Company profile & branch footprint",desc:"Riset skala bisnis, lokasi kantor, cabang, dan aktivitas perusahaan.",q:'"'+companyName+'" company profile Indonesia branches locations'}
+        ].map((item,i)=><article className="research-link-card" key={item.title}><span className="finder-number">0{i+1}</span><div><b>{item.title}</b><p>{item.desc}</p><a href={"https://www.google.com/search?q="+encodeURIComponent(item.q)} target="_blank" rel="noreferrer">Research source <ArrowUpRight size={14}/></a></div></article>)}
+      </div>
+      <div className="field-note"><ShieldCheck size={15}/> Hasil pencarian adalah petunjuk riset, bukan data terverifikasi. Simpan hanya kontak profesional yang relevan, cantumkan URL sumber, dan lakukan pengecekan sebelum menghubungi.</div>
+    </section>
     <div className="finder-guide"><div><span className="page-eyebrow">QUALIFICATION CHECKLIST</span><h2>Before a company becomes a lead</h2><p>Masukkan perusahaan hanya setelah kamu menemukan sumber publik yang relevan dan mencatat alasan kenapa kalender meja mungkin dibutuhkan.</p></div><div className="finder-checks"><span><Check size={14}/> Website resmi atau profil perusahaan</span><span><Check size={14}/> Kebutuhan merchandise / cabang / pelanggan masuk akal</span><span><Check size={14}/> PIC bisnis dan email dari sumber yang layak</span><span><Check size={14}/> Sumber kontak dicatat di CRM</span></div></div>
     <div className="finder-segments"><div className="panel-head"><div><b>Priority segments</b><small>Mulai dari kelompok akun ini</small></div><Target size={18}/></div><div className="segment-grid">{[{id:"manufacturing",name:"Manufacturing",why:"Employee gifts, distributor network, vendor gifts."},{id:"property",name:"Property",why:"Customer handover, sales gallery, partner gifts."},{id:"finance",name:"Finance",why:"Customer appreciation and branch distribution."},{id:"hospitality",name:"Hospitality",why:"Guest relations, partner and staff merchandise."},{id:"distribution",name:"Distribution",why:"Sales teams, resellers and customer gifts."},{id:"corporate",name:"Corporate HQ",why:"Year-end gifts and multi-office procurement."}].map((x)=><button className={industry===x.id?"segment-card selected":"segment-card"} key={x.id} onClick={()=>setIndustry(x.id)}><b>{x.name}</b><small>{x.why}</small></button>)}</div></div>
     <div className="finder-add"><div><b>Found a relevant company?</b><p>Tambahkan ke CRM setelah nama perusahaan dan sumbernya diverifikasi.</p></div><button className="btn-primary" onClick={()=>onAdd(industry,area)}><Plus size={15}/> Add prospect manually</button></div>
