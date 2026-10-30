@@ -14,7 +14,7 @@ const STORAGE_KEY = "smp-sales-hub-v1";
 const PRICE_DEFAULT = 68000;
 const STATUSES = ["New", "Qualified", "Draft ready", "Contacted", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
 const NAV = [
-  ["Overview", LayoutDashboard], ["Prospects", Building2], ["Pipeline", Target],
+  ["Overview", LayoutDashboard], ["Company finder", Search], ["Prospects", Building2], ["Pipeline", Target],
   ["Email studio", Mail], ["Follow-ups", CalendarClock], ["Quotation", FileText]
 ];
 
@@ -57,6 +57,8 @@ export default function SalesHubPage() {
   const [quote, setQuote] = useState({ company: "", contact: "", qty: 1000, price: PRICE_DEFAULT, notes: "Kalender meja custom 2027; desain dan spesifikasi mengikuti persetujuan final." });
   const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
+  const [finderIndustry, setFinderIndustry] = useState("manufacturing");
+  const [finderArea, setFinderArea] = useState("Jakarta");
 
   useEffect(() => {
     try {
@@ -197,6 +199,7 @@ export default function SalesHubPage() {
 
         <div className="hub-content">
           {active === "Overview" && <Overview leads={leads} totalPipeline={totalPipeline} wonRevenue={wonRevenue} interested={interested} followups={followups} onAdd={() => {setEditing(null);setShowForm(true);}} onNavigate={setActive} onEmail={openEmail} />}
+          {active === "Company finder" && <CompanyFinder industry={finderIndustry} setIndustry={setFinderIndustry} area={finderArea} setArea={setFinderArea} onAdd={(industry, area) => {setEditing({company:"",industry,area,qty:1000,price:PRICE_DEFAULT,status:"New"});setShowForm(true);}} />}
           {active === "Prospects" && <section className="hub-page">
             <PageHeading eyebrow="DATABASE PERUSAHAAN" title="Prospects" description="Simpan perusahaan target, PIC, sumber kontak, dan kebutuhan kalender." action={<button className="btn-primary" onClick={() => {setEditing(null);setShowForm(true);}}><Plus size={16}/> Add prospect</button>}/>
             <div className="toolbar"><label className="search-field"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari perusahaan, industri, PIC..."/></label><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option>All statuses</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select><button className="btn-secondary" onClick={exportCsv}><Download size={15}/> Export CSV</button><label className="btn-secondary file-import"><ArrowDownToLine size={15}/> Import CSV<input type="file" accept=".csv,text/csv" onChange={importCsv}/></label></div>
@@ -244,6 +247,44 @@ function MoreDots() { return <span className="more-dots">•••</span>; }
 function PageHeading({eyebrow,title,description,action}) { return <div className="page-heading"><div><span className="page-eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>{action}</div>; }
 function StatusPill({status}) { const cls = String(status||"New").toLowerCase().replaceAll(" ","-"); return <span className={"status-pill status-"+cls}>{status || "New"}</span>; }
 function EmptyState({title,text,action}) { return <div className="empty-state"><span className="empty-icon"><ClipboardList size={20}/></span><b>{title}</b><p>{text}</p>{action}</div>; }
+
+
+function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
+  const labels = {
+    manufacturing:"manufacturing companies and factories",
+    property:"property developers and real estate companies",
+    finance:"banks, insurance and financial services companies",
+    hospitality:"hotels and hospitality groups",
+    distribution:"large distributors and FMCG companies",
+    corporate:"large companies and corporate headquarters"
+  };
+  const phrase = labels[industry] || labels.corporate;
+  const query = phrase + " in " + area + " Indonesia procurement marketing corporate gifts";
+  const mapQuery = phrase + " in " + area;
+  const searches = [
+    {title:"Company websites",desc:"Cari website resmi, profil perusahaan, dan halaman kontak.",url:"https://www.google.com/search?q="+encodeURIComponent(query+" official website contact")},
+    {title:"Procurement & marketing contacts",desc:"Cari halaman pengadaan, vendor registration, atau PIC marketing.",url:"https://www.google.com/search?q="+encodeURIComponent(query+" procurement vendor registration marketing")},
+    {title:"Google Maps",desc:"Temukan kantor pusat, pabrik, hotel, dan lokasi operasional.",url:"https://www.google.com/maps/search/"+encodeURIComponent(mapQuery)}
+  ];
+  return <section className="hub-page">
+    <PageHeading eyebrow="ACCOUNT DISCOVERY" title="Company finder" description="Temukan akun perusahaan yang relevan lewat pencarian publik. Hasil pencarian perlu diverifikasi sebelum dimasukkan ke CRM."/>
+    <div className="finder-layout">
+      <div className="panel finder-controls">
+        <div className="panel-head"><div><b>Build a search</b><small>Tentukan segmen dan area target</small></div><Search size={18}/></div>
+        <label className="field-label">Target industry<select value={industry} onChange={(e)=>setIndustry(e.target.value)}><option value="manufacturing">Manufacturing & factories</option><option value="property">Property & real estate</option><option value="finance">Banking & finance</option><option value="hospitality">Hotels & hospitality</option><option value="distribution">Distribution & FMCG</option><option value="corporate">Large corporate accounts</option></select></label>
+        <label className="field-label">Target area<input value={area} onChange={(e)=>setArea(e.target.value)} placeholder="Jakarta / Jakarta Timur / Bekasi"/></label>
+        <div className="finder-query"><small>SEARCH INTENT</small><p>{query}</p></div>
+        <div className="field-note"><ShieldCheck size={15}/> Tool ini membuka pencarian publik. Tidak melakukan scraping, tidak mengambil email otomatis, dan tidak mengklaim hasil sebagai verified leads.</div>
+      </div>
+      <div className="finder-results">
+        {searches.map((item,i)=><article className="finder-card" key={item.title}><span className="finder-number">0{i+1}</span><div><b>{item.title}</b><p>{item.desc}</p><a href={item.url} target="_blank" rel="noreferrer">Open search <ArrowUpRight size={14}/></a></div></article>)}
+      </div>
+    </div>
+    <div className="finder-guide"><div><span className="page-eyebrow">QUALIFICATION CHECKLIST</span><h2>Before a company becomes a lead</h2><p>Masukkan perusahaan hanya setelah kamu menemukan sumber publik yang relevan dan mencatat alasan kenapa kalender meja mungkin dibutuhkan.</p></div><div className="finder-checks"><span><Check size={14}/> Website resmi atau profil perusahaan</span><span><Check size={14}/> Kebutuhan merchandise / cabang / pelanggan masuk akal</span><span><Check size={14}/> PIC bisnis dan email dari sumber yang layak</span><span><Check size={14}/> Sumber kontak dicatat di CRM</span></div></div>
+    <div className="finder-segments"><div className="panel-head"><div><b>Priority segments</b><small>Mulai dari kelompok akun ini</small></div><Target size={18}/></div><div className="segment-grid">{[{id:"manufacturing",name:"Manufacturing",why:"Employee gifts, distributor network, vendor gifts."},{id:"property",name:"Property",why:"Customer handover, sales gallery, partner gifts."},{id:"finance",name:"Finance",why:"Customer appreciation and branch distribution."},{id:"hospitality",name:"Hospitality",why:"Guest relations, partner and staff merchandise."},{id:"distribution",name:"Distribution",why:"Sales teams, resellers and customer gifts."},{id:"corporate",name:"Corporate HQ",why:"Year-end gifts and multi-office procurement."}].map((x)=><button className={industry===x.id?"segment-card selected":"segment-card"} key={x.id} onClick={()=>setIndustry(x.id)}><b>{x.name}</b><small>{x.why}</small></button>)}</div></div>
+    <div className="finder-add"><div><b>Found a relevant company?</b><p>Tambahkan ke CRM setelah nama perusahaan dan sumbernya diverifikasi.</p></div><button className="btn-primary" onClick={()=>onAdd(industry,area)}><Plus size={15}/> Add prospect manually</button></div>
+  </section>;
+}
 
 function Overview({leads,totalPipeline,wonRevenue,interested,followups,onAdd,onNavigate,onEmail}) {
   const active = leads.filter((x)=>!["Won","Lost","Opt-out"].includes(x.status));
