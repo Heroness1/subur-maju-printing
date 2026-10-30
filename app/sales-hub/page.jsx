@@ -157,7 +157,7 @@ export default function SalesHubPage() {
     catch { notify("Clipboard tidak tersedia di browser ini"); }
   }
   function exportCsv() {
-    const columns = ["id","company","industry","area","website","contact","role","email","source","reason","qty","price","status","lastContact","followup","notes"];
+    const columns = ["id","company","industry","area","website","contact","role","email","source","sourceUrl","companySourceUrl","contactSourceUrl","emailSourceUrl","verificationStatus","verifiedAt","reason","qty","price","status","lastContact","followup","notes"];
     const rows = [columns.join(","), ...leads.map((lead) => columns.map((key) => escCsv(lead[key])).join(","))];
     const blob = new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -226,12 +226,12 @@ export default function SalesHubPage() {
 
         <div className="hub-content">
           {active === "Overview" && <Overview leads={leads} totalPipeline={totalPipeline} wonRevenue={wonRevenue} interested={interested} followups={followups} onAdd={() => {setEditing(null);setShowForm(true);}} onNavigate={setActive} onEmail={openEmail} />}
-          {active === "Company finder" && <CompanyFinder industry={finderIndustry} setIndustry={setFinderIndustry} area={finderArea} setArea={setFinderArea} onAdd={(industry, area) => {setEditing({company:"",industry,area,qty:1000,price:PRICE_DEFAULT,status:"New"});setShowForm(true);}} />}
+          {active === "Company finder" && <CompanyFinder industry={finderIndustry} setIndustry={setFinderIndustry} area={finderArea} setArea={setFinderArea} onAdd={(industry, area, research={}) => {setEditing({company:"",industry,area,qty:1000,price:PRICE_DEFAULT,status:"New",...research});setShowForm(true);}} />}
           {active === "Prospects" && <section className="hub-page">
             <PageHeading eyebrow="DATABASE PERUSAHAAN" title="Prospects" description="Simpan perusahaan target, PIC, sumber kontak, dan kebutuhan kalender." action={<button className="btn-primary" onClick={() => {setEditing(null);setShowForm(true);}}><Plus size={16}/> Add prospect</button>}/>
             <div className="toolbar"><label className="search-field"><Search size={16}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari perusahaan, industri, PIC..."/></label><select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}><option>All statuses</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select><button className="btn-secondary" onClick={exportCsv}><Download size={15}/> Export CSV</button><label className="btn-secondary file-import"><ArrowDownToLine size={15}/> Import CSV<input type="file" accept=".csv,text/csv" onChange={importCsv}/></label></div>
             <div className="table-wrap"><table className="prospect-table"><thead><tr><th>Company</th><th>Contact</th><th>Industry / area</th><th>Order estimate</th><th>Status</th><th>Next follow-up</th><th/></tr></thead><tbody>
-              {filtered.map((lead) => <tr key={lead.id}><td><button className="company-cell" onClick={() => {setSelectedId(lead.id);setEditing(lead);setShowForm(true);}}><b>{lead.company}</b><small>{lead.website || lead.id}</small></button></td><td><b>{lead.contact || "—"}</b><small>{lead.email || "No email"}</small></td><td>{lead.industry || "—"}<small>{lead.area || "Jakarta"}</small></td><td><b>{Number(lead.qty || 0).toLocaleString("id-ID")} pcs</b><small>{money(Number(lead.qty || 0)*Number(lead.price || PRICE_DEFAULT))}</small></td><td><StatusPill status={lead.status}/></td><td>{lead.followup || "—"}</td><td><div className="row-actions"><button title="Generate email" onClick={() => openEmail(lead)}><Mail size={15}/></button><button title="Buat penawaran" onClick={() => setQuoteFromLead(lead)}><FileText size={15}/></button><button title="Hapus" onClick={() => removeLead(lead.id)}><Trash2 size={15}/></button></div></td></tr>)}
+              {filtered.map((lead) => <tr key={lead.id}><td><button className="company-cell" onClick={() => {setSelectedId(lead.id);setEditing(lead);setShowForm(true);}}><b>{lead.company}</b><small>{lead.website || lead.id}</small></button></td><td><b>{lead.contact || "—"}</b><small>{lead.email || "No email"} · {lead.verificationStatus || "Unverified"}</small></td><td>{lead.industry || "—"}<small>{lead.area || "Jakarta"}</small></td><td><b>{Number(lead.qty || 0).toLocaleString("id-ID")} pcs</b><small>{money(Number(lead.qty || 0)*Number(lead.price || PRICE_DEFAULT))}</small></td><td><StatusPill status={lead.status}/></td><td>{lead.followup || "—"}</td><td><div className="row-actions"><button title="Generate email" onClick={() => openEmail(lead)}><Mail size={15}/></button><button title="Buat penawaran" onClick={() => setQuoteFromLead(lead)}><FileText size={15}/></button><button title="Hapus" onClick={() => removeLead(lead.id)}><Trash2 size={15}/></button></div></td></tr>)}
               {!filtered.length && <tr><td colSpan="7"><EmptyState title="Belum ada prospek" text="Tambahkan perusahaan pertama atau impor daftar CSV untuk mulai membangun pipeline." action={<button className="btn-primary" onClick={() => {setEditing(null);setShowForm(true);}}><Plus size={15}/> Add first prospect</button>}/></td></tr>}
             </tbody></table></div>
             <div className="table-foot">{filtered.length} prospek ditampilkan <span>Data disimpan pada browser/perangkat ini</span></div>
@@ -321,6 +321,9 @@ export default function SalesHubPage() {
         <label className="field-label span-two">Branch / office footprint<input name="footprint" defaultValue={editing?.footprint || ""} placeholder="20 cabang di Indonesia"/></label>
         <label className="field-label span-two">Research summary<input name="researchSummary" defaultValue={editing?.researchSummary || ""} placeholder="Profil bisnis, aktivitas, indikasi kebutuhan kalender..."/></label>
         <label className="field-label span-two">Contact / company source URL<input name="sourceUrl" defaultValue={editing?.sourceUrl || ""} placeholder="URL halaman resmi / profil PIC / direktori publik"/></label>
+        <label className="field-label">Company source URL<input name="companySourceUrl" defaultValue={editing?.companySourceUrl || ""} placeholder="Website / profil resmi"/></label><label className="field-label">PIC source URL<input name="contactSourceUrl" defaultValue={editing?.contactSourceUrl || ""} placeholder="Profil / halaman tim"/></label>
+        <label className="field-label span-two">Email source URL<input name="emailSourceUrl" defaultValue={editing?.emailSourceUrl || ""} placeholder="Halaman resmi yang mempublikasikan email"/></label>
+        <label className="field-label">Verification status<select name="verificationStatus" defaultValue={editing?.verificationStatus || "Unverified"}><option>Unverified</option><option>Partially verified</option><option>Verified</option><option>Needs review</option></select></label><label className="field-label">Last verified<input type="date" name="verifiedAt" defaultValue={editing?.verifiedAt || ""}/></label>
         <label className="field-label">Lead source<input name="source" defaultValue={editing?.source || ""} placeholder="Website, referral, LinkedIn..."/></label><label className="field-label">Status<select name="status" defaultValue={editing?.status || "New"}>{STATUSES.map((s)=><option key={s}>{s}</option>)}</select></label>
         <label className="field-label">Estimated quantity<input type="number" min="1" name="qty" defaultValue={editing?.qty || 1000}/></label><label className="field-label">Price / pcs (Rp)<input type="number" min="1" name="price" defaultValue={editing?.price || PRICE_DEFAULT}/></label>
         <label className="field-label span-two">Nilai PO final (Rp)<input type="number" min="0" name="poValue" defaultValue={editing?.poValue ?? ""} placeholder="Kosongkan untuk hitung qty × harga"/></label>
@@ -394,6 +397,12 @@ function EmptyState({title,text,action}) { return <div className="empty-state"><
 function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
   const [companyName,setCompanyName] = useState("");
   const [companyDomain,setCompanyDomain] = useState("");
+  const [picName,setPicName] = useState("");
+  const [picRole,setPicRole] = useState("");
+  const [companySourceUrl,setCompanySourceUrl] = useState("");
+  const [contactSourceUrl,setContactSourceUrl] = useState("");
+  const [emailSourceUrl,setEmailSourceUrl] = useState("");
+  const [researchNotes,setResearchNotes] = useState("");
   const labels = {
     manufacturing:"manufacturing companies and factories",
     property:"property developers and real estate companies",
@@ -405,49 +414,61 @@ function CompanyFinder({industry,setIndustry,area,setArea,onAdd}) {
   const phrase = labels[industry] || labels.corporate;
   const query = phrase + " in " + area + " Indonesia procurement marketing corporate gifts";
   const mapQuery = phrase + " in " + area;
+  const company = companyName.trim();
+  const domain = companyDomain.trim().replace(/^https?:\/\//i,"").replace(/\/.*$/,"");
+  const exact = company ? '"' + company + '"' : phrase;
+  const searchUrl = (q) => "https://www.google.com/search?q="+encodeURIComponent(q);
   const searches = [
-    {title:"Company websites",desc:"Cari website resmi, profil perusahaan, dan halaman kontak.",url:"https://www.google.com/search?q="+encodeURIComponent(query+" official website contact")},
-    {title:"Procurement & marketing contacts",desc:"Cari halaman pengadaan, vendor registration, atau PIC marketing.",url:"https://www.google.com/search?q="+encodeURIComponent(query+" procurement vendor registration marketing")},
-    {title:"Google Maps",desc:"Temukan kantor pusat, pabrik, hotel, dan lokasi operasional.",url:"https://www.google.com/maps/search/"+encodeURIComponent(mapQuery)}
+    {title:"Official company profile",desc:"Pastikan nama legal, website, industri, alamat kantor, dan kanal resmi.",q:exact+" official website company profile Indonesia"},
+    {title:"Procurement & vendor registration",desc:"Cari unit purchasing, procurement, sourcing, vendor management, dan halaman pendaftaran vendor.",q:exact+' (procurement OR purchasing OR sourcing OR "vendor management" OR supplier)'},
+    {title:"Marketing, brand & corporate affairs",desc:"Cari pemilik kebutuhan merchandise, brand activation, komunikasi, dan corporate gift.",q:exact+' (marketing OR "brand manager" OR "corporate communications" OR "public relations" OR "corporate affairs")'},
+    {title:"HR, GA & office management",desc:"Cari jalur alternatif untuk employee gift, kalender karyawan, general affairs, dan kebutuhan kantor.",q:exact+' (HR OR "human resources" OR "people and culture" OR "general affairs" OR "office manager" OR "employee engagement")'},
+    {title:"PIC on LinkedIn",desc:"Temukan profil orang, lalu cocokkan jabatan dan perusahaan saat ini sebelum mencatatnya.",q:exact+' (procurement OR purchasing OR marketing OR "general affairs" OR HR) site:linkedin.com/in'},
+    {title:"Official contact & email source",desc:"Cari email berdomain perusahaan dan halaman kontak resmi; hindari menebak pola email.",q:(domain?"site:"+domain+" ":"")+exact+" (contact OR email OR directory OR vendor)"},
+    {title:"Branch & business footprint",desc:"Nilai skala distribusi, jumlah cabang, lokasi kantor, pabrik, dan aktivitas perusahaan.",q:exact+" Indonesia branches offices factories locations annual report"}
   ];
+  const readyToSave = company.length > 1;
   return <section className="hub-page">
-    <PageHeading eyebrow="ACCOUNT DISCOVERY" title="Company finder" description="Temukan akun perusahaan yang relevan lewat pencarian publik. Hasil pencarian perlu diverifikasi sebelum dimasukkan ke CRM."/>
+    <PageHeading eyebrow="ACCOUNT DISCOVERY" title="Company finder" description="Bangun daftar akun berdasarkan kecocokan bisnis, temukan decision-maker, lalu simpan bukti sumbernya ke CRM."/>
     <div className="finder-layout">
       <div className="panel finder-controls">
         <div className="panel-head"><div><b>Build a search</b><small>Tentukan segmen dan area target</small></div><Search size={18}/></div>
         <label className="field-label">Target industry<select value={industry} onChange={(e)=>setIndustry(e.target.value)}><option value="manufacturing">Manufacturing & factories</option><option value="property">Property & real estate</option><option value="finance">Banking & finance</option><option value="hospitality">Hotels & hospitality</option><option value="distribution">Distribution & FMCG</option><option value="corporate">Large corporate accounts</option></select></label>
         <label className="field-label">Target area<input value={area} onChange={(e)=>setArea(e.target.value)} placeholder="Jakarta / Jakarta Timur / Bekasi"/></label>
         <div className="finder-query"><small>SEARCH INTENT</small><p>{query}</p></div>
-        <div className="field-note"><ShieldCheck size={15}/> Tool ini membuka pencarian publik. Tidak melakukan scraping, tidak mengambil email otomatis, dan tidak mengklaim hasil sebagai verified leads.</div>
+        <div className="field-note"><ShieldCheck size={15}/> Pencarian hanya membuka sumber publik. Tidak ada scraping, email tidak ditebak, dan hasil belum dianggap verified.</div>
       </div>
       <div className="finder-results">
-        {searches.map((item,i)=><article className="finder-card" key={item.title}><span className="finder-number">0{i+1}</span><div><b>{item.title}</b><p>{item.desc}</p><a href={item.url} target="_blank" rel="noreferrer">Open search <ArrowUpRight size={14}/></a></div></article>)}
+        <article className="finder-card"><span className="finder-number">01</span><div><b>Company discovery</b><p>Temukan perusahaan dengan banyak karyawan, cabang, pelanggan, atau aktivitas yang masuk akal untuk kalender corporate.</p><a href={searchUrl(query+" official company list")} target="_blank" rel="noreferrer">Find target companies <ArrowUpRight size={14}/></a></div></article>
+        <article className="finder-card"><span className="finder-number">02</span><div><b>Google Maps & office footprint</b><p>Cocokkan kantor pusat, pabrik, cabang, dan area operasional. Catat lokasi yang relevan, bukan sekadar jumlah lokasi.</p><a href={"https://www.google.com/maps/search/"+encodeURIComponent(mapQuery)} target="_blank" rel="noreferrer">Open Maps <ArrowUpRight size={14}/></a></div></article>
+        <article className="finder-card"><span className="finder-number">03</span><div><b>Account qualification</b><p>Prioritaskan akun dengan alasan pembelian yang nyata: employee gift, customer gift, event, atau distribusi multi-cabang.</p><a href={searchUrl(query+' ("annual report" OR "employee engagement" OR "customer appreciation" OR event)')} target="_blank" rel="noreferrer">Find buying signals <ArrowUpRight size={14}/></a></div></article>
       </div>
     </div>
 
     <section className="panel research-workbench">
-      <div className="panel-head"><div><b>Company research & contact enrichment</b><small>Riset satu akun dan temukan decision-maker sebelum outreach</small></div><Users size={18}/></div>
+      <div className="panel-head"><div><b>Company research & contact enrichment</b><small>Riset satu akun sampai ada PIC dan jejak sumber yang bisa diperiksa</small></div><Users size={18}/></div>
       <div className="research-inputs">
         <label className="field-label">Company name<input value={companyName} onChange={e=>setCompanyName(e.target.value)} placeholder="Contoh: PT Astra International Tbk"/></label>
-        <label className="field-label">Official domain (optional)<input value={companyDomain} onChange={e=>setCompanyDomain(e.target.value)} placeholder="astra.co.id"/></label>
+        <label className="field-label">Official domain<input value={companyDomain} onChange={e=>setCompanyDomain(e.target.value)} placeholder="astra.co.id"/></label>
       </div>
       <div className="research-grid">
-        {[
-          {title:"Procurement / Purchasing",desc:"Cari PIC pengadaan, purchasing, dan vendor management.",q:'"'+companyName+'" procurement OR purchasing OR "vendor management"'},
-          {title:"Marketing / HR / Corporate Affairs",desc:"Cari PIC merchandise, marketing, HR, atau corporate affairs.",q:'"'+companyName+'" marketing OR HR OR "corporate secretary" LinkedIn'},
-          {title:"LinkedIn people",desc:"Temukan profil profesional yang mencantumkan perusahaan ini.",q:companyName+" procurement marketing HR LinkedIn"},
-          {title:"Official contact & vendor page",desc:"Cari email bisnis, halaman kontak, dan pendaftaran vendor resmi.",q:(companyDomain ? "site:"+companyDomain+" " : "")+'"'+companyName+'" contact email vendor supplier'},
-          {title:"Company profile & branch footprint",desc:"Riset skala bisnis, lokasi kantor, cabang, dan aktivitas perusahaan.",q:'"'+companyName+'" company profile Indonesia branches locations'}
-        ].map((item,i)=><article className="research-link-card" key={item.title}><span className="finder-number">0{i+1}</span><div><b>{item.title}</b><p>{item.desc}</p><a href={"https://www.google.com/search?q="+encodeURIComponent(item.q)} target="_blank" rel="noreferrer">Research source <ArrowUpRight size={14}/></a></div></article>)}
+        {searches.map((item,i)=><article className="research-link-card" key={item.title}><span className="finder-number">{String(i+1).padStart(2,"0")}</span><div><b>{item.title}</b><p>{item.desc}</p><a href={searchUrl((company?exact+" ":"")+item.q.replace(exact,""))} target="_blank" rel="noreferrer">Open research <ArrowUpRight size={14}/></a></div></article>)}
       </div>
-      <div className="field-note"><ShieldCheck size={15}/> Hasil pencarian adalah petunjuk riset, bukan data terverifikasi. Simpan hanya kontak profesional yang relevan, cantumkan URL sumber, dan lakukan pengecekan sebelum menghubungi.</div>
+      <div className="research-inputs research-capture">
+        <label className="field-label">PIC name (optional)<input value={picName} onChange={e=>setPicName(e.target.value)} placeholder="Nama orang yang ditemukan"/></label>
+        <label className="field-label">PIC role / department<input value={picRole} onChange={e=>setPicRole(e.target.value)} placeholder="Procurement Manager / General Affairs"/></label>
+        <label className="field-label">Official company source URL<input value={companySourceUrl} onChange={e=>setCompanySourceUrl(e.target.value)} placeholder="https://company.com/about"/></label>
+        <label className="field-label">PIC profile / role source URL<input value={contactSourceUrl} onChange={e=>setContactSourceUrl(e.target.value)} placeholder="URL profil LinkedIn atau halaman tim resmi"/></label>
+        <label className="field-label span-two">Business email source URL (if found)<input value={emailSourceUrl} onChange={e=>setEmailSourceUrl(e.target.value)} placeholder="URL halaman resmi tempat email dipublikasikan"/></label>
+        <label className="field-label span-two">Research notes<textarea rows="3" value={researchNotes} onChange={e=>setResearchNotes(e.target.value)} placeholder="Contoh: 18 cabang; PIC mengelola procurement; kalender relevan untuk employee/customer gift. Pisahkan fakta dari dugaan."/></label>
+      </div>
+      <div className="research-save-row"><div><b>Save research to CRM</b><p>Data masuk sebagai prospek <strong>Unverified</strong> sampai sumber dan PIC dicek manual.</p></div><button className="btn-primary" disabled={!readyToSave} onClick={()=>onAdd(industry,area,{company:companyName.trim(),website:domain? "https://"+domain:"",contact:picName,role:picRole,companySourceUrl,contactSourceUrl,emailSourceUrl,source:"Public web research",researchSummary:researchNotes,verificationStatus:"Unverified",sourceUrl:companySourceUrl||contactSourceUrl||emailSourceUrl})}><Plus size={15}/> Save company to CRM</button></div>
+      <div className="field-note"><ShieldCheck size={15}/> Aturan verifikasi: cocokkan nama legal dan domain resmi; PIC harus masih bekerja di perusahaan dan jabatannya relevan; email harus berasal dari sumber publik yang jelas atau dikonfirmasi langsung. LinkedIn/search snippet saja bukan bukti email valid.</div>
     </section>
-    <div className="finder-guide"><div><span className="page-eyebrow">QUALIFICATION CHECKLIST</span><h2>Before a company becomes a lead</h2><p>Masukkan perusahaan hanya setelah kamu menemukan sumber publik yang relevan dan mencatat alasan kenapa kalender meja mungkin dibutuhkan.</p></div><div className="finder-checks"><span><Check size={14}/> Website resmi atau profil perusahaan</span><span><Check size={14}/> Kebutuhan merchandise / cabang / pelanggan masuk akal</span><span><Check size={14}/> PIC bisnis dan email dari sumber yang layak</span><span><Check size={14}/> Sumber kontak dicatat di CRM</span></div></div>
+    <div className="finder-guide"><div><span className="page-eyebrow">PIC PRIORITY</span><h2>Who should we contact?</h2><p>Jangan terpaku pada satu jabatan. Kalender dapat dibeli oleh procurement, marketing, HR, general affairs, atau corporate communications tergantung tujuan penggunaannya.</p></div><div className="finder-checks"><span><Check size={14}/> Procurement / Purchasing / Sourcing</span><span><Check size={14}/> Marketing / Brand / Corporate Affairs</span><span><Check size={14}/> HR / People & Culture / General Affairs</span><span><Check size={14}/> Event / Office / Vendor Management</span></div></div>
     <div className="finder-segments"><div className="panel-head"><div><b>Priority segments</b><small>Mulai dari kelompok akun ini</small></div><Target size={18}/></div><div className="segment-grid">{[{id:"manufacturing",name:"Manufacturing",why:"Employee gifts, distributor network, vendor gifts."},{id:"property",name:"Property",why:"Customer handover, sales gallery, partner gifts."},{id:"finance",name:"Finance",why:"Customer appreciation and branch distribution."},{id:"hospitality",name:"Hospitality",why:"Guest relations, partner and staff merchandise."},{id:"distribution",name:"Distribution",why:"Sales teams, resellers and customer gifts."},{id:"corporate",name:"Corporate HQ",why:"Year-end gifts and multi-office procurement."}].map((x)=><button className={industry===x.id?"segment-card selected":"segment-card"} key={x.id} onClick={()=>setIndustry(x.id)}><b>{x.name}</b><small>{x.why}</small></button>)}</div></div>
-    <div className="finder-add"><div><b>Found a relevant company?</b><p>Tambahkan ke CRM setelah nama perusahaan dan sumbernya diverifikasi.</p></div><button className="btn-primary" onClick={()=>onAdd(industry,area)}><Plus size={15}/> Add prospect manually</button></div>
   </section>;
 }
-
 function Overview({leads,totalPipeline,wonRevenue,interested,followups,onAdd,onNavigate,onEmail}) {
   const active = leads.filter((x)=>!["Won","Lost","Opt-out"].includes(x.status));
   const sent = leads.filter((x)=>["Contacted","Interested","Negotiation","Won"].includes(x.status)).length;
