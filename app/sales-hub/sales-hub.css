@@ -269,3 +269,16 @@
 @media(max-width:1100px){.finance-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.finance-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.finance-layout{grid-template-columns:1fr}.finance-metrics .metric-card{padding:15px}}
 @media(max-width:420px){.finance-metrics{grid-template-columns:1fr 1fr}.finance-metrics .metric-card>b{font-size:17px}}
+
+
+/* Company research and contact enrichment */
+.research-workbench{padding:20px;margin:20px 0}
+.research-inputs{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:4px 0 18px}
+.research-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.research-link-card{display:flex;gap:14px;padding:16px;border:1px solid #eaeaea;border-radius:12px;background:#fff}
+.research-link-card>div{min-width:0}
+.research-link-card b{font-size:13px}
+.research-link-card p{font-size:12px;line-height:1.55;color:#777;margin:6px 0 10px}
+.research-link-card a{display:inline-flex;align-items:center;gap:5px;color:#d86617;font-size:12px;font-weight:700;text-decoration:none}
+.research-workbench .field-note{margin-top:16px}
+@media(max-width:760px){.research-inputs,.research-grid{grid-template-columns:1fr}}
