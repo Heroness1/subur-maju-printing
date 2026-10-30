@@ -15,7 +15,7 @@ const PRICE_DEFAULT = 68000;
 const STATUSES = ["New", "Qualified", "Draft ready", "Contacted", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
 const NAV = [
   ["Overview", LayoutDashboard], ["Company finder", Search], ["Prospects", Building2], ["Pipeline", Target],
-  ["Email studio", Mail], ["Follow-ups", CalendarClock], ["Quotation", FileText]
+  ["Email studio", Mail], ["Follow-ups", CalendarClock], ["Quotation", FileText], ["Finance", CircleDollarSign]
 ];
 
 const starter = [];
@@ -44,6 +44,7 @@ function makeEmail(lead, sender, phone) {
 
 export default function SalesHubPage() {
   const [leads, setLeads] = useState(starter);
+  const [expenses, setExpenses] = useState([]);
   const [ready, setReady] = useState(false);
   const [active, setActive] = useState("Overview");
   const [query, setQuery] = useState("");
@@ -81,6 +82,7 @@ export default function SalesHubPage() {
       if (saved) {
         const data = JSON.parse(saved);
         setLeads(Array.isArray(data.leads) ? data.leads : []);
+        setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
         setSender(data.sender || "Tim Subur Maju Printing");
         setPhone(data.phone || "");
       }
@@ -90,8 +92,8 @@ export default function SalesHubPage() {
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, sender, phone }));
-  }, [leads, sender, phone, ready]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, expenses, sender, phone }));
+  }, [leads, expenses, sender, phone, ready]);
 
   const selected = leads.find((lead) => lead.id === selectedId) || null;
   const filtered = useMemo(() => leads.filter((lead) => {
@@ -100,7 +102,11 @@ export default function SalesHubPage() {
   }), [leads, query, statusFilter]);
 
   const totalPipeline = leads.filter((x) => !["Won", "Lost", "Opt-out"].includes(x.status)).reduce((sum, x) => sum + (Number(x.qty) || 0) * (Number(x.price) || PRICE_DEFAULT), 0);
-  const wonRevenue = leads.filter((x) => x.status === "Won").reduce((sum, x) => sum + (Number(x.qty) || 0) * (Number(x.price) || PRICE_DEFAULT), 0);
+  const wonRevenue = leads.filter((x) => x.status === "Won").reduce((sum, x) => sum + (Number(x.poValue ?? ((Number(x.qty) || 0) * (Number(x.price) || PRICE_DEFAULT))) || 0), 0);
+  const totalExpenses = expenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const commissionPayable = wonRevenue * 0.25;
+  const grossProfit = wonRevenue - totalExpenses;
+  const netProfit = grossProfit - commissionPayable;
   const interested = leads.filter((x) => ["Interested", "Negotiation"].includes(x.status)).length;
   const followups = leads.filter((x) => x.followup && x.followup <= today() && !["Won", "Lost", "Opt-out"].includes(x.status));
 
@@ -117,6 +123,7 @@ export default function SalesHubPage() {
       id: editing?.id || makeId(),
       qty: Number(data.qty || 1000),
       price: Number(data.price || PRICE_DEFAULT),
+      poValue: data.poValue === "" ? undefined : Number(data.poValue),
       status: data.status || "New",
       created: editing?.created || today(),
       updated: today()
@@ -192,7 +199,7 @@ export default function SalesHubPage() {
   const taxQuote = taxableQuote * Math.max(0, Number(quote.taxRate) || 0) / 100;
   const shippingQuote = Math.max(0, Number(quote.shipping) || 0);
   const totalQuote = taxableQuote + taxQuote + shippingQuote;
-  const commissionQuote = taxableQuote * 0.25;
+  const commissionQuote = totalQuote * 0.25;
 
   return (
     <main className="hub-shell">
@@ -240,6 +247,7 @@ export default function SalesHubPage() {
               <div className="panel email-editor"><div className="panel-head"><div><b>Message composer</b><small>Review sebelum mengirim</small></div><span className="draft-tag">DRAFT</span></div><label className="field-label">Subject<input value={emailDraft.subject} onChange={(e) => setEmailDraft({...emailDraft,subject:e.target.value})} placeholder="Subject email"/></label><label className="field-label">Email body<textarea rows="15" value={emailDraft.body} onChange={(e) => setEmailDraft({...emailDraft,body:e.target.value})} placeholder="Pilih prospek untuk generate draft..."/></label><div className="editor-actions"><button className="btn-secondary" disabled={!emailDraft.body} onClick={() => copyText("Subject: "+emailDraft.subject+"\n\n"+emailDraft.body,"Email draft")}><Copy size={15}/> Copy draft</button><button className="btn-primary" disabled={!selected || !selected.email || !emailDraft.body} onClick={gmailDraft}><Mail size={15}/> Open Gmail draft <ArrowUpRight size={14}/></button><button className="btn-quiet" disabled={!selected} onClick={() => markSent(selected)}><Check size={15}/> Mark as sent</button></div></div></div>
           </section>}
           {active === "Follow-ups" && <section className="hub-page"><PageHeading eyebrow="NEXT ACTIONS" title="Follow-up center" description="Jaga ritme komunikasi. Hentikan kontak saat prospek menolak atau meminta opt-out."/><div className="followup-list">{leads.filter((x) => x.followup && !["Won","Lost","Opt-out"].includes(x.status)).sort((a,b)=>a.followup.localeCompare(b.followup)).map((lead) => <div className="followup-row" key={lead.id}><div className="followup-date"><b>{new Date(lead.followup+"T00:00:00").getDate()}</b><small>{new Date(lead.followup+"T00:00:00").toLocaleDateString("id-ID",{month:"short"})}</small></div><div className="followup-info"><b>{lead.company}</b><small>{lead.contact || "PIC belum diisi"} · {lead.email || "Email belum diisi"}</small></div><StatusPill status={lead.status}/><span className={lead.followup <= today() ? "due-label overdue" : "due-label"}>{lead.followup <= today() ? "Due" : "Upcoming"} · {lead.followup}</span><button className="btn-secondary" onClick={() => openEmail(lead)}><Mail size={14}/> Draft</button></div>)}{!leads.some((x)=>x.followup && !["Won","Lost","Opt-out"].includes(x.status)) && <EmptyState title="Belum ada follow-up terjadwal" text="Set tanggal follow-up saat mengedit prospek atau setelah mengirim email pertama."/>}</div></section>}
+          {active === "Finance" && <Finance leads={leads} expenses={expenses} setExpenses={setExpenses} wonRevenue={wonRevenue} totalExpenses={totalExpenses} commissionPayable={commissionPayable} grossProfit={grossProfit} netProfit={netProfit} notify={notify} />}
           {active === "Quotation" && <section className="hub-page">
             <PageHeading eyebrow="COMMERCIAL PROPOSAL" title="Quotation builder" description="Susun penawaran formal, hitung diskon, pajak, dan pengiriman, lalu cetak atau simpan sebagai PDF." action={<button className="btn-secondary" onClick={() => { const d = new Date(); const v = new Date(d); v.setDate(v.getDate()+14); setQuote({number:"SMP/QTN/"+d.toISOString().slice(0,10).replaceAll("-","")+"/"+Math.random().toString(36).slice(2,6).toUpperCase(),date:d.toISOString().slice(0,10),validUntil:v.toISOString().slice(0,10),company:"",contact:"",email:"",phone:"",address:"",qty:1000,price:PRICE_DEFAULT,discount:0,shipping:0,taxRate:0,paymentTerms:"Sesuai kesepakatan",productionLeadTime:"Dikonfirmasi setelah desain dan spesifikasi disetujui",delivery:"Biaya dan alamat pengiriman dikonfirmasi terpisah",notes:"Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final."}); }}><Plus size={15}/> New quotation</button>}/>
             <div className="quote-layout">
@@ -293,7 +301,7 @@ export default function SalesHubPage() {
                   <div className="quote-signatures"><div><small>APPROVED BY CUSTOMER</small><span>Nama, jabatan, dan tanda tangan</span><i/></div><div><small>SUBUR MAJU PRINTING</small><span>Authorized representative</span><i/></div></div>
                   <div className="quote-paper-foot"><b>Subur Maju Printing</b><span>Terima kasih atas kesempatan yang diberikan.</span></div>
                 </div>
-                <div className="commission-card"><span>SIMULASI KOMISI INTERNAL · 25%</span><b>{money(commissionQuote)}</b><small>Simulasi 25% dari nilai produk setelah diskon, sebelum pajak dan pengiriman. Hanya untuk perhitungan internal; tidak tercantum dalam quotation klien.</small></div>
+                <div className="commission-card"><span>SIMULASI KOMISI INTERNAL · 25%</span><b>{money(commissionQuote)}</b><small>Simulasi 25% dari nilai PO/total penawaran. Nilai final komisi mengikuti PO yang disepakati. Hanya untuk perhitungan internal; tidak tercantum dalam quotation klien.</small></div>
               </div>
             </div>
           </section>}
@@ -310,6 +318,7 @@ export default function SalesHubPage() {
         <label className="field-label span-two">Website<input name="website" defaultValue={editing?.website || ""} placeholder="https://..."/></label>
         <label className="field-label">Lead source<input name="source" defaultValue={editing?.source || ""} placeholder="Website, referral, LinkedIn..."/></label><label className="field-label">Status<select name="status" defaultValue={editing?.status || "New"}>{STATUSES.map((s)=><option key={s}>{s}</option>)}</select></label>
         <label className="field-label">Estimated quantity<input type="number" min="1" name="qty" defaultValue={editing?.qty || 1000}/></label><label className="field-label">Price / pcs (Rp)<input type="number" min="1" name="price" defaultValue={editing?.price || PRICE_DEFAULT}/></label>
+        <label className="field-label span-two">Nilai PO final (Rp)<input type="number" min="0" name="poValue" defaultValue={editing?.poValue ?? (Number(editing?.qty || 1000) * Number(editing?.price || PRICE_DEFAULT))} placeholder="Isi setelah PO disepakati"/></label>
         <label className="field-label">Last contact<input type="date" name="lastContact" defaultValue={editing?.lastContact || ""}/></label><label className="field-label">Next follow-up<input type="date" name="followup" defaultValue={editing?.followup || ""}/></label>
         <label className="field-label span-two">Why this company is relevant?<textarea name="reason" rows="2" defaultValue={editing?.reason || ""} placeholder="Tuliskan alasan yang benar-benar sudah diverifikasi."/></label>
         <label className="field-label span-two">Notes<textarea name="notes" rows="2" defaultValue={editing?.notes || ""} placeholder="Kebutuhan, respons, catatan riset..."/></label>
@@ -317,6 +326,58 @@ export default function SalesHubPage() {
       {notice && <div className="toast"><Check size={16}/>{notice}</div>}
     </main>
   );
+}
+
+
+function Finance({leads,expenses,setExpenses,wonRevenue,totalExpenses,commissionPayable,grossProfit,netProfit,notify}) {
+  const [form,setForm] = useState({date:today(),company:"",category:"Produksi",description:"",amount:""});
+  const won = leads.filter((x)=>x.status==="Won");
+  function addExpense(e) {
+    e.preventDefault();
+    if (!form.description.trim() || Number(form.amount)<=0) return notify("Isi keterangan dan nominal biaya yang valid");
+    setExpenses((items)=>[{...form,id:makeId(),amount:Number(form.amount)},...items]);
+    setForm({...form,company:"",description:"",amount:""});
+    notify("Biaya berhasil dicatat");
+  }
+  function removeExpense(id) {
+    if (!window.confirm("Hapus catatan biaya ini?")) return;
+    setExpenses((items)=>items.filter((x)=>x.id!==id));
+  }
+  return <section className="hub-page">
+    <PageHeading eyebrow="FINANCIAL CONTROL" title="Revenue, costs & profit" description="Omzet diakui dari nilai PO pada deal Won. Komisi dihitung 25% dari nilai PO, bukan dari pembayaran masuk."/>
+    <div className="finance-metrics">
+      <article className="metric-card"><span>Revenue · nilai PO</span><b>{money(wonRevenue)}</b><small>{won.length} deal Won</small></article>
+      <article className="metric-card"><span>Total biaya tercatat</span><b>{money(totalExpenses)}</b><small>Produksi dan operasional</small></article>
+      <article className="metric-card"><span>Gross profit</span><b>{money(grossProfit)}</b><small>Revenue dikurangi biaya</small></article>
+      <article className="metric-card"><span>Komisi kamu · 25%</span><b>{money(commissionPayable)}</b><small>Dihitung dari total nilai PO</small></article>
+      <article className="metric-card finance-net"><span>Profit setelah komisi</span><b>{money(netProfit)}</b><small>Gross profit dikurangi komisi</small></article>
+    </div>
+    <div className="finance-layout">
+      <div className="panel">
+        <div className="panel-head"><div><b>Catat biaya</b><small>Masukkan biaya aktual, bukan estimasi</small></div><CircleDollarSign size={18}/></div>
+        <form className="finance-form" onSubmit={addExpense}>
+          <label className="field-label">Tanggal<input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label>
+          <label className="field-label">Kategori<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}><option>Produksi</option><option>Bahan baku</option><option>Finishing</option><option>Packaging</option><option>Pengiriman</option><option>Iklan / marketing</option><option>Operasional</option><option>Lainnya</option></select></label>
+          <label className="field-label">Perusahaan / deal (opsional)<select value={form.company} onChange={e=>setForm({...form,company:e.target.value})}><option value="">Umum / tidak terkait deal</option>{won.map(x=><option key={x.id} value={x.company}>{x.company}</option>)}</select></label>
+          <label className="field-label">Keterangan<input value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Contoh: cetak isi kalender 1.000 pcs"/></label>
+          <label className="field-label">Nominal biaya (Rp)<input type="number" min="1" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="0"/></label>
+          <button className="btn-primary full-button" type="submit"><Plus size={15}/> Simpan biaya</button>
+        </form>
+      </div>
+      <div className="panel finance-breakdown">
+        <div className="panel-head"><div><b>Ringkasan perhitungan</b><small>Berbasis nilai PO deal Won</small></div></div>
+        <div><span>Revenue PO</span><b>{money(wonRevenue)}</b></div><div><span>Biaya tercatat</span><b>− {money(totalExpenses)}</b></div><div className="finance-subtotal"><span>Gross profit</span><b>{money(grossProfit)}</b></div><div><span>Komisi 25% dari PO</span><b>− {money(commissionPayable)}</b></div><div className="finance-total"><span>Profit setelah komisi</span><b>{money(netProfit)}</b></div>
+        <p className="muted-help">Profit ini masih berupa estimasi berdasarkan biaya yang sudah kamu input. Biaya yang belum dicatat akan membuat profit terlihat lebih tinggi dari kondisi sebenarnya.</p>
+      </div>
+    </div>
+    <div className="panel finance-ledger"><div className="panel-head"><div><b>Deal yang sudah Won</b><small>Nilai PO menjadi dasar omzet dan komisi</small></div></div>
+      <div className="table-wrap"><table className="prospect-table"><thead><tr><th>Perusahaan</th><th>Quantity</th><th>Nilai PO</th><th>Komisi 25%</th></tr></thead><tbody>{won.map(x=>{const po=Number(x.poValue ?? (Number(x.qty||0)*Number(x.price||PRICE_DEFAULT)))||0;return <tr key={x.id}><td><b>{x.company}</b></td><td>{Number(x.qty||0).toLocaleString("id-ID")} pcs</td><td><b>{money(po)}</b></td><td>{money(po*.25)}</td></tr>})}{!won.length&&<tr><td colSpan="4"><EmptyState title="Belum ada PO Won" text="Ubah status prospek menjadi Won setelah purchase order disepakati."/></td></tr>}</tbody></table></div>
+    </div>
+    <div className="panel finance-ledger"><div className="panel-head"><div><b>Expense ledger</b><small>{expenses.length} catatan biaya · tersimpan di browser ini</small></div><b>{money(totalExpenses)}</b></div>
+      <div className="table-wrap"><table className="prospect-table"><thead><tr><th>Tanggal</th><th>Kategori</th><th>Perusahaan</th><th>Keterangan</th><th>Nominal</th><th/></tr></thead><tbody>{expenses.map(x=><tr key={x.id}><td>{x.date}</td><td>{x.category}</td><td>{x.company||"Umum"}</td><td>{x.description}</td><td><b>{money(x.amount)}</b></td><td><button className="btn-quiet danger" onClick={()=>removeExpense(x.id)}><Trash2 size={14}/></button></td></tr>)}{!expenses.length&&<tr><td colSpan="6"><EmptyState title="Belum ada biaya" text="Catat biaya produksi dan operasional untuk menghitung profit yang lebih akurat."/></td></tr>}</tbody></table></div>
+    </div>
+    <div className="quote-tip"><ShieldCheck size={15}/> Komisi dihitung dari nilai PO final (termasuk komponen yang tercantum dalam PO), 25%. Pencatatan pembayaran/DP belum dipisahkan sebagai cash flow pada versi ini.</div>
+  </section>;
 }
 
 function MoreDots() { return <span className="more-dots">•••</span>; }
