@@ -15,7 +15,6 @@ const PRICE_DEFAULT = 27500;
 const PRICE_FLOOR = 24000;
 const PRICE_PLUS = 34900;
 const PRICE_PREMIUM_MIN = 49900;
-const PRICE_PREMIUM_MAX = 68000;
 const UNIT_COST_DEFAULT = 15000;
 const SALES_COMMISSION_RATE = 0.25;
 const STATUSES = ["New", "Qualified", "Draft ready", "Contacted", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
@@ -45,7 +44,7 @@ function makeEmail(lead, sender, phone) {
   const unitPrice = Number(lead.price || PRICE_DEFAULT);
   return {
     subject: "Penawaran Kalender Meja Custom 2027 untuk " + company,
-    body: contact + ",\n\nPerkenalkan, kami dari Subur Maju Printing.\n\nKami ingin menawarkan kalender meja custom 2027 untuk kebutuhan branding, merchandise, maupun corporate gift " + company + ". Kami menangani produksi sendiri dan dapat mendiskusikan desain serta spesifikasi sesuai kebutuhan perusahaan.\n\nSebagai gambaran awal, harga acuan paket Standard Corporate untuk pemesanan 1.000 pcs adalah " + money(unitPrice) + "/pcs (estimasi " + money(unitPrice * 1000) + " untuk 1.000 pcs). Harga final mengikuti spesifikasi, desain, finishing, dan detail pengiriman yang disepakati.\n\nKami menghubungi " + company + " karena " + reason + ". Apakah Bapak/Ibu berkenan menerima katalog dan penawaran resmi untuk ditinjau? Jika bukan bagian yang tepat, mohon arahkan kami ke PIC terkait.\n\nTerima kasih atas waktunya. Jika email ini tidak relevan, silakan balas agar kami tidak menghubungi kembali.\n\nSalam,\n" + (sender || "Tim Subur Maju Printing") + "\nSubur Maju Printing\n" + (phone || "[Nomor WhatsApp bisnis]")
+    body: contact + ",\n\nPerkenalkan, kami dari Subur Maju Printing.\n\nKami ingin menawarkan kalender meja custom 2027 untuk kebutuhan branding, merchandise, maupun corporate gift " + company + ". Kami menangani produksi sendiri dan dapat mendiskusikan desain serta spesifikasi sesuai kebutuhan perusahaan.\n\nSebagai gambaran awal, harga acuan untuk pemesanan 1.000 pcs adalah " + money(unitPrice) + "/pcs (estimasi " + money(unitPrice * 1000) + " untuk 1.000 pcs). Harga final mengikuti spesifikasi, desain, finishing, dan detail pengiriman yang disepakati.\n\nKami menghubungi " + company + " karena " + reason + ". Apakah Bapak/Ibu berkenan menerima katalog dan penawaran resmi untuk ditinjau? Jika bukan bagian yang tepat, mohon arahkan kami ke PIC terkait.\n\nTerima kasih atas waktunya. Jika email ini tidak relevan, silakan balas agar kami tidak menghubungi kembali.\n\nSalam,\n" + (sender || "Tim Subur Maju Printing") + "\nSubur Maju Printing\n" + (phone || "[Nomor WhatsApp bisnis]")
   };
 }
 
