@@ -20,6 +20,27 @@ const NAV = [
 
 const starter = [];
 
+const DEFAULT_PRODUCTS = [
+ {id:"calendar",category:"Kalender",name:"Kalender Meja Custom 2027",unit:"pcs",defaultPrice:68000,description:"Kalender meja custom untuk corporate gift dan branding."},
+ {id:"banner",category:"Large Format",name:"Banner / Spanduk",unit:"pcs",defaultPrice:0,description:"Cetak banner atau spanduk sesuai ukuran dan bahan."},
+ {id:"backdrop",category:"Large Format",name:"Backdrop / Media Display",unit:"pcs",defaultPrice:0,description:"Backdrop acara atau media display."},
+ {id:"sticker",category:"Stiker & Label",name:"Stiker Custom",unit:"pcs",defaultPrice:0,description:"Stiker custom dengan opsi bahan dan finishing."},
+ {id:"label",category:"Stiker & Label",name:"Label Produk",unit:"pcs",defaultPrice:0,description:"Label produk sesuai ukuran dan kebutuhan."},
+ {id:"packaging",category:"Packaging",name:"Packaging / Box Custom",unit:"pcs",defaultPrice:0,description:"Kemasan custom sesuai dimensi dan material."},
+ {id:"paperbag",category:"Packaging",name:"Paper Bag Custom",unit:"pcs",defaultPrice:0,description:"Paper bag custom untuk retail dan corporate."},
+ {id:"brochure",category:"Marketing Print",name:"Brosur / Flyer",unit:"pcs",defaultPrice:0,description:"Brosur atau flyer promosi."},
+ {id:"catalog",category:"Marketing Print",name:"Katalog / Booklet",unit:"pcs",defaultPrice:0,description:"Katalog produk atau booklet perusahaan."},
+ {id:"invitation",category:"Invitation",name:"Undangan Cetak",unit:"pcs",defaultPrice:0,description:"Undangan custom dengan pilihan kertas dan finishing."},
+ {id:"notebook",category:"Corporate Merchandise",name:"Notebook / Agenda",unit:"pcs",defaultPrice:0,description:"Notebook atau agenda custom perusahaan."},
+ {id:"idcard",category:"Event Printing",name:"ID Card / Kartu Identitas",unit:"pcs",defaultPrice:0,description:"ID card untuk acara atau kebutuhan perusahaan."},
+ {id:"certificate",category:"Event Printing",name:"Sertifikat",unit:"pcs",defaultPrice:0,description:"Sertifikat cetak untuk acara dan pelatihan."},
+ {id:"custom",category:"Custom",name:"Produk Custom",unit:"pcs",defaultPrice:0,description:"Produk custom berdasarkan brief pelanggan."}
+];
+function makeQuoteNumber(){return "SMP/QTN/"+today().replaceAll("-","")+"/"+Math.random().toString(36).slice(2,6).toUpperCase();}
+function createQuote(){return {id:makeId(),number:makeQuoteNumber(),status:"Draft",date:today(),validUntil:dateAfter(14),company:"",contact:"",email:"",phone:"",address:"",items:[],discount:0,shipping:0,taxRate:0,paymentTerms:"Sesuai kesepakatan",productionLeadTime:"Dikonfirmasi setelah spesifikasi disetujui",delivery:"Biaya dan alamat pengiriman dikonfirmasi terpisah",notes:""};}
+function makeQuoteItem(product,qty=1,price){return {id:makeId(),productId:product.id||"custom",category:product.category||"Custom",name:product.name||"Produk Custom",description:product.description||"",specifications:"",qty:Number(qty)||1,unit:product.unit||"pcs",unitPrice:price===undefined?(Number(product.defaultPrice)||0):(Number(price)||0)};}
+
+
 function money(value) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value) || 0);
 }
@@ -74,22 +95,12 @@ export default function SalesHubPage() {
   const [emailDraft, setEmailDraft] = useState({ subject: "", body: "" });
   const [sender, setSender] = useState("Tim Subur Maju Printing");
   const [phone, setPhone] = useState("");
-  const [quote, setQuote] = useState(() => {
-    const date = new Date();
-    const dateKey = date.toISOString().slice(0, 10).replaceAll("-", "");
-    const valid = new Date(date); valid.setDate(valid.getDate() + 14);
-    return {
-      number: "SMP/QTN/" + dateKey + "/" + Math.random().toString(36).slice(2, 6).toUpperCase(),
-      date: date.toISOString().slice(0, 10),
-      validUntil: valid.toISOString().slice(0, 10),
-      company: "", contact: "", email: "", phone: "", address: "",
-      qty: 1000, price: PRICE_DEFAULT, discount: 0, shipping: 0, taxRate: 0,
-      paymentTerms: "Sesuai kesepakatan",
-      productionLeadTime: "Dikonfirmasi setelah desain dan spesifikasi disetujui",
-      delivery: "Biaya dan alamat pengiriman dikonfirmasi terpisah",
-      notes: "Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final."
-    };
-  });
+  const [quote, setQuote] = useState(() => createQuote());
+  const [savedQuotes, setSavedQuotes] = useState([]);
+  const [catalog, setCatalog] = useState(DEFAULT_PRODUCTS);
+  const [selectedProductId, setSelectedProductId] = useState("calendar");
+  const [newProduct, setNewProduct] = useState({name:"",category:"Custom",unit:"pcs",defaultPrice:""});
+  const [showCatalogForm, setShowCatalogForm] = useState(false);
   const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
   const [finderIndustry, setFinderIndustry] = useState("manufacturing");
@@ -104,6 +115,8 @@ export default function SalesHubPage() {
         setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
         setSender(data.sender || "Tim Subur Maju Printing");
         setPhone(data.phone || "");
+        setSavedQuotes(Array.isArray(data.quotations) ? data.quotations : []);
+        setCatalog(Array.isArray(data.productCatalog) && data.productCatalog.length ? data.productCatalog : DEFAULT_PRODUCTS);
       }
     } catch {}
     setReady(true);
@@ -111,8 +124,8 @@ export default function SalesHubPage() {
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, expenses, sender, phone }));
-  }, [leads, expenses, sender, phone, ready]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, expenses, sender, phone, quotations:savedQuotes, productCatalog:catalog }));
+  }, [leads, expenses, sender, phone, savedQuotes, catalog, ready]);
 
   const selected = leads.find((lead) => lead.id === selectedId) || null;
   const filtered = useMemo(() => leads.filter((lead) => {
@@ -240,17 +253,38 @@ export default function SalesHubPage() {
     window.open(url, "_blank", "noopener,noreferrer");
   }
   function setQuoteFromLead(lead) {
-    setQuote((current) => ({ ...current, company: lead.company, contact: lead.contact || "", email: lead.email || "", phone: lead.phone || "", qty: Number(lead.qty || 1000), price: Number(lead.price || PRICE_DEFAULT), product: "Kalender Meja Custom 2027", notes: lead.notes || "Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final." }));
+    const calendar=catalog.find(item=>item.id==="calendar")||DEFAULT_PRODUCTS[0];
+    setQuote({...createQuote(),company:lead.company,contact:lead.contact||"",email:lead.email||"",phone:lead.phone||"",items:[makeQuoteItem(calendar,Number(lead.qty||1000),Number(lead.price||PRICE_DEFAULT))],notes:lead.notes||"Spesifikasi, desain, bahan, dan finishing mengikuti persetujuan final."});
     setActive("Penawaran harga");
   }
-
-  const revenueQuote = Math.max(0, Number(quote.qty) || 0) * Math.max(0, Number(quote.price) || 0);
-  const discountQuote = Math.min(revenueQuote, Math.max(0, Number(quote.discount) || 0));
-  const taxableQuote = Math.max(0, revenueQuote - discountQuote);
-  const taxQuote = taxableQuote * Math.max(0, Number(quote.taxRate) || 0) / 100;
-  const shippingQuote = Math.max(0, Number(quote.shipping) || 0);
-  const totalQuote = taxableQuote + taxQuote + shippingQuote;
-  const commissionQuote = totalQuote * 0.25;
+  function addCatalogProduct(){
+    const name=newProduct.name.trim(); if(!name)return notify("Nama produk wajib diisi");
+    const product={...newProduct,id:"custom-"+Math.random().toString(36).slice(2,8),defaultPrice:Math.max(0,Number(newProduct.defaultPrice)||0),description:""};
+    setCatalog(items=>[...items,product]);setSelectedProductId(product.id);
+    setNewProduct({name:"",category:"Custom",unit:"pcs",defaultPrice:""});setShowCatalogForm(false);
+    setQuote(current=>({...current,items:[...current.items,makeQuoteItem(product)]}));notify("Produk ditambahkan ke katalog dan quotation");
+  }
+  function addQuoteItem(){const product=catalog.find(item=>item.id===selectedProductId);if(!product)return notify("Pilih produk terlebih dahulu");setQuote(current=>({...current,items:[...current.items,makeQuoteItem(product)]}));}
+  function updateQuoteItem(id,patch){setQuote(current=>({...current,items:current.items.map(item=>item.id===id?{...item,...patch}:item)}));}
+  function removeQuoteItem(id){setQuote(current=>({...current,items:current.items.filter(item=>item.id!==id)}));}
+  function saveQuote(nextStatus="Draft"){
+    if(!quote.company.trim())return notify("Isi nama perusahaan pelanggan terlebih dahulu");
+    if(!quote.items.length)return notify("Tambahkan minimal satu produk ke quotation");
+    const snapshot={...quote,status:nextStatus,updatedAt:today(),items:quote.items.map(item=>({...item}))};
+    setSavedQuotes(items=>items.some(item=>item.id===snapshot.id)?items.map(item=>item.id===snapshot.id?snapshot:item):[snapshot,...items]);
+    setQuote(snapshot);notify(nextStatus==="Sent"?"Quotation ditandai terkirim":"Quotation tersimpan");
+  }
+  function editSavedQuote(item){setQuote({...item,items:(item.items||[]).map(line=>({...line}))});setActive("Penawaran harga");notify("Quotation dibuka untuk diedit");}
+  function duplicateSavedQuote(item){const copy={...item,id:makeId(),number:makeQuoteNumber(),status:"Draft",date:today(),validUntil:dateAfter(14),items:(item.items||[]).map(line=>({...line,id:makeId()}))};setQuote(copy);setActive("Penawaran harga");notify("Salinan quotation dibuat");}
+  function deleteSavedQuote(id){if(!window.confirm("Hapus quotation ini dari perangkat ini?"))return;setSavedQuotes(items=>items.filter(item=>item.id!==id));notify("Quotation dihapus");}
+  function startNewQuote(){setQuote(createQuote());setActive("Penawaran harga");}
+  const revenueQuote=(quote.items||[]).reduce((sum,item)=>sum+Math.max(0,Number(item.qty)||0)*Math.max(0,Number(item.unitPrice)||0),0);
+  const discountQuote=Math.min(revenueQuote,Math.max(0,Number(quote.discount)||0));
+  const taxableQuote=Math.max(0,revenueQuote-discountQuote);
+  const taxQuote=taxableQuote*Math.max(0,Number(quote.taxRate)||0)/100;
+  const shippingQuote=Math.max(0,Number(quote.shipping)||0);
+  const totalQuote=taxableQuote+taxQuote+shippingQuote;
+  const commissionQuote=totalQuote*0.25;
 
   return (
     <main className="hub-shell">
@@ -305,61 +339,95 @@ export default function SalesHubPage() {
           </section>}
           {active === "Tindak lanjut" && <section className="hub-page"><PageHeading eyebrow="AGENDA TINDAK LANJUT" title="Agenda tindak lanjut" description="Jadwal pengingat membantu menjaga ritme komunikasi. Email tetap ditinjau dan dikirim manual oleh kamu." action={<button className="btn-secondary" onClick={scheduleMissingFollowups}><Zap size={14}/> Jadwalkan prospek tanpa agenda</button>}/><div className="followup-list">{leads.filter((x) => x.followup && !["Won","Lost","Opt-out"].includes(x.status)).sort((a,b)=>a.followup.localeCompare(b.followup)).map((lead) => <div className="followup-row" key={lead.id}><div className="followup-date"><b>{new Date(lead.followup+"T00:00:00").getDate()}</b><small>{new Date(lead.followup+"T00:00:00").toLocaleDateString("id-ID",{month:"short"})}</small></div><div className="followup-info"><b>{lead.company}</b><small>{lead.contact || "Narahubung belum diisi"} · {lead.email || "Email belum diisi"} · Tahap {Number(lead.followupStep || 0) + 1}/3</small></div><StatusPill status={lead.status}/><span className={lead.followup <= today() ? "due-label overdue" : "due-label"}>{lead.followup <= today() ? "Jatuh tempo" : "Akan datang"} · {lead.followup}</span><button className="btn-secondary" onClick={() => openFollowupEmail(lead)}><Mail size={14}/> Draft</button><button className="btn-quiet" onClick={() => completeFollowup(lead)}><CheckCircle2 size={14}/> Selesai</button></div>)}{!leads.some((x)=>x.followup && !["Won","Lost","Opt-out"].includes(x.status)) && <EmptyState title="Belum ada follow-up terjadwal" text="Tandai email pertama sudah dikirim atau jadwalkan prospek yang sudah pernah dihubungi."/>}</div></section>}{active === "Automasi sales" && <AutomationCenter leads={leads} onSchedule={scheduleMissingFollowups} onDraft={openFollowupEmail} onComplete={completeFollowup} onNavigate={setActive} />}
           {active === "Keuangan" && <Keuangan leads={leads} expenses={expenses} setExpenses={setExpenses} wonRevenue={wonRevenue} totalExpenses={totalExpenses} commissionPayable={commissionPayable} grossProfit={grossProfit} netProfit={netProfit} notify={notify} />}
-          {active === "Penawaran harga" && <section className="hub-page">
-            <PageHeading eyebrow="DOKUMEN PENAWARAN" title="Penyusunan penawaran harga" description="Siapkan dokumen penawaran resmi, hitung diskon, pajak, dan biaya pengiriman, lalu cetak atau simpan dalam format PDF." action={<button className="btn-secondary" onClick={() => { const d = new Date(); const v = new Date(d); v.setDate(v.getDate()+14); setQuote({number:"SMP/QTN/"+d.toISOString().slice(0,10).replaceAll("-","")+"/"+Math.random().toString(36).slice(2,6).toUpperCase(),date:d.toISOString().slice(0,10),validUntil:v.toISOString().slice(0,10),company:"",contact:"",email:"",phone:"",address:"",qty:1000,price:PRICE_DEFAULT,discount:0,shipping:0,taxRate:0,paymentTerms:"Sesuai kesepakatan",productionLeadTime:"Dikonfirmasi setelah desain dan spesifikasi disetujui",delivery:"Biaya dan alamat pengiriman dikonfirmasi terpisah",notes:"Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final."}); }}><Plus size={15}/> Buat penawaran baru</button>}/>
+          {active === "Penawaran harga" && <section className="hub-page quotation-workspace">
+            <PageHeading eyebrow="UNIVERSAL QUOTATION ENGINE" title="Quotation & penawaran harga" description="Buat, edit, duplikasi, dan simpan penawaran untuk seluruh kategori produk Subur Maju Printing." action={<button className="btn-primary" onClick={startNewQuote}><Plus size={15}/> Quotation baru</button>}/>
             <div className="quote-layout">
               <div className="panel quote-form">
-                <div className="panel-head"><div><b>Penawaran harga details</b><small>Lengkapi informasi sebelum penawaran dikirim kepada calon pelanggan.</small></div><FileText size={18}/></div>
-                <div className="quote-form-section"><b>Dokumen</b><div className="field-row">
-                  <label className="field-label">Penawaran harga number<input value={quote.number} onChange={e=>setQuote({...quote,number:e.target.value})}/></label>
-                  <label className="field-label">Penawaran harga date<input type="date" value={quote.date} onChange={e=>setQuote({...quote,date:e.target.value})}/></label>
+                <div className="panel-head"><div><b>{quote.number}</b><small>{quote.status||"Draft"} · Form quotation</small></div><FileText size={18}/></div>
+                <div className="quote-form-section"><b>Informasi dokumen</b><div className="field-row">
+                  <label className="field-label">Nomor quotation<input value={quote.number} onChange={e=>setQuote({...quote,number:e.target.value})}/></label>
+                  <label className="field-label">Tanggal<input type="date" value={quote.date} onChange={e=>setQuote({...quote,date:e.target.value})}/></label>
                   <label className="field-label">Berlaku hingga<input type="date" value={quote.validUntil} onChange={e=>setQuote({...quote,validUntil:e.target.value})}/></label>
                 </div></div>
                 <div className="quote-form-section"><b>Informasi pelanggan</b>
-                  <label className="field-label">Perusahaan name<input value={quote.company} onChange={e=>setQuote({...quote,company:e.target.value})} placeholder="Nama perusahaan"/></label>
-                  <label className="field-label">Narahubung (PIC)<input value={quote.contact} onChange={e=>setQuote({...quote,contact:e.target.value})} placeholder="Nama PIC"/></label>
-                  <label className="field-label">Email perusahaan<input type="email" value={quote.email} onChange={e=>setQuote({...quote,email:e.target.value})} placeholder="procurement@perusahaan.co.id"/></label>
-                  <label className="field-label">Telepon / WhatsApp<input value={quote.phone} onChange={e=>setQuote({...quote,phone:e.target.value})} placeholder="+62..."/></label>
-                  <label className="field-label">Alamat perusahaan<textarea rows="2" value={quote.address} onChange={e=>setQuote({...quote,address:e.target.value})} placeholder="Alamat perusahaan"/></label>
-                </div>
-                <div className="quote-form-section"><b>Produk dan harga</b>
-                  <label className="field-label">Deskripsi produk<input value={quote.product || "Kalender Meja Custom 2027"} onChange={e=>setQuote({...quote,product:e.target.value})}/></label>
+                  <label className="field-label">Nama perusahaan<input value={quote.company} onChange={e=>setQuote({...quote,company:e.target.value})} placeholder="Nama perusahaan"/></label>
                   <div className="field-row">
-                    <label className="field-label">Jumlah (pcs)<input type="number" min="1" value={quote.qty} onChange={e=>setQuote({...quote,qty:e.target.value})}/></label>
-                    <label className="field-label">Harga per pcs (Rp)<input type="number" min="0" value={quote.price} onChange={e=>setQuote({...quote,price:e.target.value})}/></label>
-                    <label className="field-label">Diskon (Rp)<input type="number" min="0" value={quote.discount} onChange={e=>setQuote({...quote,discount:e.target.value})}/></label>
-                    <label className="field-label">Tarif pajak (%)<input type="number" min="0" max="100" step="0.01" value={quote.taxRate} onChange={e=>setQuote({...quote,taxRate:e.target.value})}/></label>
-                    <label className="field-label">Biaya pengiriman (Rp)<input type="number" min="0" value={quote.shipping} onChange={e=>setQuote({...quote,shipping:e.target.value})}/></label>
+                    <label className="field-label">PIC<input value={quote.contact} onChange={e=>setQuote({...quote,contact:e.target.value})} placeholder="Nama narahubung"/></label>
+                    <label className="field-label">Email<input type="email" value={quote.email} onChange={e=>setQuote({...quote,email:e.target.value})} placeholder="procurement@perusahaan.co.id"/></label>
+                    <label className="field-label">Telepon / WhatsApp<input value={quote.phone} onChange={e=>setQuote({...quote,phone:e.target.value})} placeholder="+62..."/></label>
                   </div>
-                  <div className="quote-calculation"><span>Subtotal</span><b>{money(revenueQuote)}</b><span>Diskon</span><b>− {money(discountQuote)}</b><span>Tax ({Number(quote.taxRate)||0}%)</span><b>{money(taxQuote)}</b><span>Pengiriman</span><b>{money(shippingQuote)}</b><strong>Total penawaran</strong><strong>{money(totalQuote)}</strong></div>
+                  <label className="field-label">Alamat perusahaan<textarea rows="2" value={quote.address} onChange={e=>setQuote({...quote,address:e.target.value})} placeholder="Alamat penagihan / pengiriman"/></label>
                 </div>
-                <div className="quote-form-section"><b>Produksi dan ketentuan</b>
-                  <label className="field-label">Ketentuan pembayaran<input value={quote.paymentTerms} onChange={e=>setQuote({...quote,paymentTerms:e.target.value})} placeholder="Contoh: 50% DP, pelunasan sebelum pengiriman"/></label>
-                  <label className="field-label">Estimasi waktu produksi<input value={quote.productionLeadTime} onChange={e=>setQuote({...quote,productionLeadTime:e.target.value})}/></label>
-                  <label className="field-label">Ketentuan pengiriman<input value={quote.delivery} onChange={e=>setQuote({...quote,delivery:e.target.value})}/></label>
-                  <label className="field-label">Spesifikasi produk dan catatan<textarea rows="4" value={quote.notes} onChange={e=>setQuote({...quote,notes:e.target.value})}/></label>
+                <div className="quote-form-section">
+                  <div className="quote-section-heading"><b>Katalog produk</b><button type="button" className="text-action" onClick={()=>setShowCatalogForm(!showCatalogForm)}>{showCatalogForm?"Tutup":"+ Tambah ke katalog"}</button></div>
+                  <div className="quote-add-product"><select value={selectedProductId} onChange={e=>setSelectedProductId(e.target.value)}>{catalog.map(product=><option key={product.id} value={product.id}>{product.category} · {product.name}</option>)}</select><button type="button" className="btn-secondary" onClick={addQuoteItem}><Plus size={14}/> Tambah produk</button></div>
+                  {showCatalogForm&&<div className="catalog-create-form">
+                    <label className="field-label">Nama produk<input value={newProduct.name} onChange={e=>setNewProduct({...newProduct,name:e.target.value})} placeholder="Contoh: Paper bag custom"/></label>
+                    <div className="field-row">
+                      <label className="field-label">Kategori<select value={newProduct.category} onChange={e=>setNewProduct({...newProduct,category:e.target.value})}>{["Kalender","Large Format","Stiker & Label","Packaging","Marketing Print","Invitation","Corporate Merchandise","Event Printing","Custom"].map(x=><option key={x}>{x}</option>)}</select></label>
+                      <label className="field-label">Satuan<input value={newProduct.unit} onChange={e=>setNewProduct({...newProduct,unit:e.target.value})} placeholder="pcs, set, m²"/></label>
+                      <label className="field-label">Harga acuan (Rp)<input type="number" min="0" value={newProduct.defaultPrice} onChange={e=>setNewProduct({...newProduct,defaultPrice:e.target.value})} placeholder="0"/></label>
+                    </div>
+                    <button type="button" className="btn-primary" onClick={addCatalogProduct}><Plus size={14}/> Simpan produk & tambahkan</button>
+                    <small className="muted-help">Harga 0 berarti wajib diisi manual pada quotation. Katalog ini tersimpan lokal di browser.</small>
+                  </div>}
                 </div>
-                <div className="quote-tip"><ShieldCheck size={15}/> Tarif pajak, diskon, biaya kirim, termin pembayaran, dan waktu produksi harus diverifikasi sebelum penawaran diterbitkan. Default pajak dan diskon adalah 0.</div>
-                <button className="btn-primary full-button" onClick={()=>window.print()}><Printer size={16}/> Cetak / Simpan PDF</button>
+                <div className="quote-form-section"><div className="quote-section-heading"><b>Item quotation ({quote.items.length})</b><small>Setiap item dapat memiliki spesifikasi dan harga berbeda.</small></div>
+                  {quote.items.map((item,index)=><article className="quote-item-editor" key={item.id}>
+                    <div className="quote-item-top"><b>Item {index+1}</b><button type="button" className="btn-quiet danger" onClick={()=>removeQuoteItem(item.id)}><Trash2 size={14}/> Hapus</button></div>
+                    <label className="field-label">Nama produk<input value={item.name} onChange={e=>updateQuoteItem(item.id,{name:e.target.value})}/></label>
+                    <div className="field-row">
+                      <label className="field-label">Kategori<input value={item.category} onChange={e=>updateQuoteItem(item.id,{category:e.target.value})}/></label>
+                      <label className="field-label">Jumlah<input type="number" min="0" step="any" value={item.qty} onChange={e=>updateQuoteItem(item.id,{qty:e.target.value})}/></label>
+                      <label className="field-label">Satuan<input value={item.unit} onChange={e=>updateQuoteItem(item.id,{unit:e.target.value})}/></label>
+                      <label className="field-label">Harga satuan (Rp)<input type="number" min="0" value={item.unitPrice} onChange={e=>updateQuoteItem(item.id,{unitPrice:e.target.value})}/></label>
+                    </div>
+                    <label className="field-label">Deskripsi<input value={item.description} onChange={e=>updateQuoteItem(item.id,{description:e.target.value})} placeholder="Ringkasan produk"/></label>
+                    <label className="field-label">Spesifikasi / ukuran / bahan / finishing<textarea rows="2" value={item.specifications} onChange={e=>updateQuoteItem(item.id,{specifications:e.target.value})} placeholder="Contoh: A3, flexi 280 gsm, laminasi doff, mata ayam..."/></label>
+                    <div className="quote-item-subtotal"><span>Subtotal item</span><b>{money((Number(item.qty)||0)*(Number(item.unitPrice)||0))}</b></div>
+                  </article>)}
+                  {!quote.items.length&&<EmptyState title="Belum ada produk" text="Pilih produk dari katalog atau tambahkan produk custom untuk mulai menyusun penawaran."/>}
+                </div>
+                <div className="quote-form-section"><b>Harga dan biaya tambahan</b><div className="field-row">
+                  <label className="field-label">Diskon total (Rp)<input type="number" min="0" value={quote.discount} onChange={e=>setQuote({...quote,discount:e.target.value})}/></label>
+                  <label className="field-label">Pajak (%)<input type="number" min="0" max="100" step="0.01" value={quote.taxRate} onChange={e=>setQuote({...quote,taxRate:e.target.value})}/></label>
+                  <label className="field-label">Pengiriman (Rp)<input type="number" min="0" value={quote.shipping} onChange={e=>setQuote({...quote,shipping:e.target.value})}/></label>
+                </div>
+                <div className="quote-calculation"><span>Subtotal</span><b>{money(revenueQuote)}</b><span>Diskon</span><b>− {money(discountQuote)}</b><span>Pajak ({Number(quote.taxRate)||0}%)</span><b>{money(taxQuote)}</b><span>Pengiriman</span><b>{money(shippingQuote)}</b><strong>Total quotation</strong><strong>{money(totalQuote)}</strong></div></div>
+                <div className="quote-form-section"><b>Ketentuan dan catatan</b>
+                  <label className="field-label">Termin pembayaran<input value={quote.paymentTerms} onChange={e=>setQuote({...quote,paymentTerms:e.target.value})} placeholder="Contoh: 50% DP, pelunasan sebelum pengiriman"/></label>
+                  <label className="field-label">Estimasi produksi<input value={quote.productionLeadTime} onChange={e=>setQuote({...quote,productionLeadTime:e.target.value})}/></label>
+                  <label className="field-label">Pengiriman<input value={quote.delivery} onChange={e=>setQuote({...quote,delivery:e.target.value})}/></label>
+                  <label className="field-label">Catatan umum<textarea rows="3" value={quote.notes} onChange={e=>setQuote({...quote,notes:e.target.value})} placeholder="Catatan tambahan untuk pelanggan..."/></label>
+                </div>
+                <div className="quote-tip"><ShieldCheck size={15}/> Harga acuan katalog bukan harga final. Verifikasi biaya produksi, spesifikasi, pajak, diskon, ongkir, dan termin sebelum quotation dikirim.</div>
+                <div className="quote-actions"><button className="btn-secondary" onClick={()=>saveQuote("Draft")}><FileText size={15}/> Simpan draft</button><button className="btn-secondary" onClick={()=>saveQuote("Sent")}><Check size={15}/> Simpan & tandai terkirim</button><button className="btn-primary" onClick={()=>window.print()}><Printer size={16}/> Cetak / Simpan PDF</button></div>
               </div>
               <div className="quote-preview">
                 <div className="quote-paper">
-                  <div className="quote-paper-head"><div className="quote-logo"><Printer size={17}/><b>SUBUR MAJU PRINTING</b></div><span>QUOTATION · 2027</span></div>
-                  <div className="quote-doc-meta"><div><small>QUOTATION NO.</small><b>{quote.number}</b></div><div><small>ISSUED DATE</small><b>{quote.date ? new Date(quote.date+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}) : "—"}</b></div><div><small>VALID UNTIL</small><b>{quote.validUntil ? new Date(quote.validUntil+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}) : "—"}</b></div></div>
-                  <div className="quote-title"><small>PENAWARAN HARGA RESMI</small><h2>Kalender Meja<br/><em>Custom 2027</em></h2><p>Penawaran kalender meja untuk kebutuhan merchandise dan identitas merek perusahaan.</p></div>
-                  <div className="quote-customer"><div><small>DITUJUKAN KEPADA</small><b>{quote.company || "Nama Perusahaan"}</b><span>{quote.contact ? "Attn. "+quote.contact : "Attn. Procurement / Marketing"}</span>{quote.email && <span>{quote.email}</span>}{quote.phone && <span>{quote.phone}</span>}{quote.address && <span>{quote.address}</span>}</div><div><small>DISIAPKAN OLEH</small><b>Subur Maju Printing</b><span>Digital Printing & Custom Merchandise</span><span>Jakarta, Indonesia</span></div></div>
+                  <div className="quote-paper-head"><div className="quote-logo"><Printer size={17}/><b>SUBUR MAJU PRINTING</b></div><span>QUOTATION</span></div>
+                  <div className="quote-doc-meta"><div><small>NOMOR QUOTATION</small><b>{quote.number}</b></div><div><small>TANGGAL</small><b>{quote.date?new Date(quote.date+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"—"}</b></div><div><small>BERLAKU HINGGA</small><b>{quote.validUntil?new Date(quote.validUntil+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"—"}</b></div></div>
+                  <div className="quote-title"><small>PENAWARAN HARGA RESMI</small><h2>Penawaran<br/><em>Produk Percetakan</em></h2><p>Penawaran produk dan jasa cetak sesuai spesifikasi yang disepakati.</p></div>
+                  <div className="quote-customer"><div><small>DITUJUKAN KEPADA</small><b>{quote.company||"Nama Perusahaan"}</b><span>{quote.contact?"Attn. "+quote.contact:"Attn. Procurement / Marketing"}</span>{quote.email&&<span>{quote.email}</span>}{quote.phone&&<span>{quote.phone}</span>}{quote.address&&<span>{quote.address}</span>}</div><div><small>DISIAPKAN OLEH</small><b>Subur Maju Printing</b><span>Digital Printing & Custom Merchandise</span><span>Jakarta, Indonesia</span></div></div>
                   <div className="quote-table">
-                    <div className="quote-table-head"><span>DESKRIPSI</span><span>JUMLAH</span><span>HARGA SATUAN</span><span>TOTAL</span></div>
-                    <div className="quote-table-row"><b>{quote.product || "Kalender Meja Custom 2027"}</b><span>{Number(quote.qty||0).toLocaleString("id-ID")} pcs</span><span>{money(quote.price)}</span><strong>{money(revenueQuote)}</strong></div>
+                    <div className="quote-table-head"><span>PRODUK / SPESIFIKASI</span><span>JUMLAH</span><span>HARGA SATUAN</span><span>TOTAL</span></div>
+                    {quote.items.map(item=><div className="quote-table-row" key={item.id}><div><b>{item.name}</b><small>{item.category}{item.description?" · "+item.description:""}</small>{item.specifications&&<small>{item.specifications}</small>}</div><span>{Number(item.qty||0).toLocaleString("id-ID")} {item.unit}</span><span>{money(item.unitPrice)}</span><strong>{money((Number(item.qty)||0)*(Number(item.unitPrice)||0))}</strong></div>)}
+                    {!quote.items.length&&<div className="quote-table-row"><b>Produk belum dipilih</b><span>—</span><span>—</span><strong>—</strong></div>}
                   </div>
-                  <div className="quote-totals"><div><span>Subtotal</span><b>{money(revenueQuote)}</b></div>{discountQuote>0 && <div><span>Diskon</span><b>− {money(discountQuote)}</b></div>}{taxQuote>0 && <div><span>Tax ({Number(quote.taxRate)||0}%)</span><b>{money(taxQuote)}</b></div>}{shippingQuote>0 && <div><span>Pengiriman</span><b>{money(shippingQuote)}</b></div>}<div className="grand-total"><span>TOTAL PENAWARAN</span><b>{money(totalQuote)}</b></div></div>
-                  <div className="quote-terms"><div><small>KETENTUAN PEMBAYARAN</small><p>{quote.paymentTerms || "—"}</p></div><div><small>ESTIMASI WAKTU PRODUKSI</small><p>{quote.productionLeadTime || "—"}</p></div><div><small>PENGIRIMAN</small><p>{quote.delivery || "—"}</p></div></div>
-                  <div className="quote-notes"><small>SPESIFIKASI PRODUK DAN CATATAN</small><p>{quote.notes || "—"}</p><p>Harga dan jadwal produksi mengikuti spesifikasi final yang disetujui kedua belah pihak. Perubahan jumlah, desain, bahan, finishing, kemasan, atau tujuan pengiriman dapat memengaruhi nilai penawaran.</p></div>
+                  <div className="quote-totals"><div><span>Subtotal</span><b>{money(revenueQuote)}</b></div>{discountQuote>0&&<div><span>Diskon</span><b>− {money(discountQuote)}</b></div>}{taxQuote>0&&<div><span>Pajak ({Number(quote.taxRate)||0}%)</span><b>{money(taxQuote)}</b></div>}{shippingQuote>0&&<div><span>Pengiriman</span><b>{money(shippingQuote)}</b></div>}<div className="grand-total"><span>TOTAL PENAWARAN</span><b>{money(totalQuote)}</b></div></div>
+                  <div className="quote-terms"><div><small>KETENTUAN PEMBAYARAN</small><p>{quote.paymentTerms||"—"}</p></div><div><small>ESTIMASI WAKTU PRODUKSI</small><p>{quote.productionLeadTime||"—"}</p></div><div><small>PENGIRIMAN</small><p>{quote.delivery||"—"}</p></div></div>
+                  {quote.notes&&<div className="quote-notes"><small>CATATAN</small><p>{quote.notes}</p></div>}
                   <div className="quote-signatures"><div><small>PERSETUJUAN PELANGGAN</small><span>Nama, jabatan, dan tanda tangan</span><i/></div><div><small>SUBUR MAJU PRINTING</small><span>Perwakilan yang berwenang</span><i/></div></div>
                   <div className="quote-paper-foot"><b>Subur Maju Printing</b><span>Terima kasih atas kepercayaan dan kesempatan yang diberikan kepada kami.</span></div>
                 </div>
-                <div className="commission-card"><span>SIMULASI KOMISI INTERNAL · 25%</span><b>{money(commissionQuote)}</b><small>Simulasi komisi sebesar 25% dari nilai PO atau total penawaran. Nilai komisi final mengikuti nilai PO yang disepakati. Informasi ini hanya untuk keperluan internal dan tidak ditampilkan pada dokumen penawaran pelanggan.</small></div>
+                <div className="commission-card"><span>SIMULASI KOMISI INTERNAL · 25%</span><b>{money(commissionQuote)}</b><small>Simulasi internal berdasarkan total quotation. Nilai komisi final mengikuti dasar komisi dan PO yang disepakati. Bagian ini tidak dicetak pada dokumen pelanggan.</small></div>
               </div>
+            </div>
+            <div className="panel quotation-saved-panel"><div className="panel-head"><div><b>Quotation tersimpan</b><small>{savedQuotes.length} dokumen · tersimpan di browser/perangkat ini</small></div></div>
+              <div className="table-wrap"><table className="prospect-table"><thead><tr><th>Nomor / pelanggan</th><th>Tanggal</th><th>Item</th><th>Total</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
+                {savedQuotes.map(item=>{const subtotal=(item.items||[]).reduce((sum,line)=>sum+(Number(line.qty)||0)*(Number(line.unitPrice)||0),0);const total=Math.max(0,subtotal-(Number(item.discount)||0))*(1+(Number(item.taxRate)||0)/100)+(Number(item.shipping)||0);return <tr key={item.id}><td><b>{item.number}</b><small>{item.company}</small></td><td>{item.date}</td><td>{(item.items||[]).length} produk</td><td><b>{money(total)}</b></td><td><StatusPill status={item.status}/></td><td><div className="row-actions"><button title="Edit quotation" onClick={()=>editSavedQuote(item)}><FileText size={14}/></button><button title="Duplikasi quotation" onClick={()=>duplicateSavedQuote(item)}><Copy size={14}/></button><button title="Hapus quotation" onClick={()=>deleteSavedQuote(item.id)}><Trash2 size={14}/></button></div></td></tr>})}
+                {!savedQuotes.length&&<tr><td colSpan="6"><EmptyState title="Belum ada quotation tersimpan" text="Simpan draft pertama untuk mulai membangun riwayat penawaran."/></td></tr>}
+              </tbody></table></div>
             </div>
           </section>}
           {active === "Settings" && <section className="hub-page"><PageHeading eyebrow="PREFERENSI WORKSPACE" title="Pengaturan" description="Atur identitas pengirim untuk draft email dan kelola penyimpanan data pada perangkat ini."/><div className="panel settings-panel"><label className="field-label">Nama pengirim<input value={sender} onChange={(e)=>setSender(e.target.value)}/></label><label className="field-label">WhatsApp bisnis<input value={phone} onChange={(e)=>setPhone(e.target.value)} placeholder="+62..."/></label><div className="field-note"><ShieldCheck size={15}/> Data prospek hanya tersimpan di local storage browser ini. Belum ada login server, sinkronisasi tim, atau backup cloud.</div><div className="settings-actions"><button className="btn-secondary" onClick={exportCsv}><Download size={15}/> Cadangkan data prospek (CSV)</button><button className="btn-quiet danger" onClick={()=>{if(window.confirm("Hapus seluruh data lokal di browser ini?")){setLeads([]);setSelectedId("");notify("Data lokal dihapus");}}}><Trash2 size={15}/> Hapus seluruh data lokal</button></div></div></section>}
