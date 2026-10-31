@@ -11,7 +11,13 @@ import {
 import "./sales-hub.css";
 
 const STORAGE_KEY = "smp-sales-hub-v1";
-const PRICE_DEFAULT = 68000;
+const PRICE_DEFAULT = 27500;
+const PRICE_FLOOR = 24000;
+const PRICE_PLUS = 34900;
+const PRICE_PREMIUM_MIN = 49900;
+const PRICE_PREMIUM_MAX = 68000;
+const UNIT_COST_DEFAULT = 15000;
+const SALES_COMMISSION_RATE = 0.25;
 const STATUSES = ["New", "Qualified", "Draft ready", "Contacted", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
 const NAV = [
   ["Overview", LayoutDashboard], ["Pencarian perusahaan", Search], ["Database prospek", Building2], ["Pipeline penjualan", Target],
@@ -36,9 +42,10 @@ function makeEmail(lead, sender, phone) {
   const contact = lead.contact ? "Yth. " + lead.contact : "Yth. Tim Procurement / Marketing";
   const company = lead.company || "Bapak/Ibu";
   const reason = lead.reason || "kebutuhan merchandise dan branding perusahaan";
+  const unitPrice = Number(lead.price || PRICE_DEFAULT);
   return {
     subject: "Penawaran Kalender Meja Custom 2027 untuk " + company,
-    body: contact + ",\n\nPerkenalkan, kami dari Subur Maju Printing.\n\nKami ingin menawarkan kalender meja custom 2027 untuk kebutuhan branding, merchandise, maupun corporate gift " + company + ". Kami menangani produksi sendiri dan dapat mendiskusikan desain serta spesifikasi sesuai kebutuhan perusahaan.\n\nSebagai gambaran awal, harga acuan untuk pemesanan 1.000 pcs adalah Rp68.000/pcs. Harga final mengikuti spesifikasi, desain, finishing, dan detail pengiriman yang disepakati.\n\nKami menghubungi " + company + " karena " + reason + ". Apakah Bapak/Ibu berkenan menerima katalog dan penawaran resmi untuk ditinjau? Jika bukan bagian yang tepat, mohon arahkan kami ke PIC terkait.\n\nTerima kasih atas waktunya. Jika email ini tidak relevan, silakan balas agar kami tidak menghubungi kembali.\n\nSalam,\n" + (sender || "Tim Subur Maju Printing") + "\nSubur Maju Printing\n" + (phone || "[Nomor WhatsApp bisnis]")
+    body: contact + ",\n\nPerkenalkan, kami dari Subur Maju Printing.\n\nKami ingin menawarkan kalender meja custom 2027 untuk kebutuhan branding, merchandise, maupun corporate gift " + company + ". Kami menangani produksi sendiri dan dapat mendiskusikan desain serta spesifikasi sesuai kebutuhan perusahaan.\n\nSebagai gambaran awal, harga acuan paket Standard Corporate untuk pemesanan 1.000 pcs adalah " + money(unitPrice) + "/pcs (estimasi " + money(unitPrice * 1000) + " untuk 1.000 pcs). Harga final mengikuti spesifikasi, desain, finishing, dan detail pengiriman yang disepakati.\n\nKami menghubungi " + company + " karena " + reason + ". Apakah Bapak/Ibu berkenan menerima katalog dan penawaran resmi untuk ditinjau? Jika bukan bagian yang tepat, mohon arahkan kami ke PIC terkait.\n\nTerima kasih atas waktunya. Jika email ini tidak relevan, silakan balas agar kami tidak menghubungi kembali.\n\nSalam,\n" + (sender || "Tim Subur Maju Printing") + "\nSubur Maju Printing\n" + (phone || "[Nomor WhatsApp bisnis]")
   };
 }
 
@@ -203,7 +210,11 @@ export default function SalesHubPage() {
   const taxQuote = taxableQuote * Math.max(0, Number(quote.taxRate) || 0) / 100;
   const shippingQuote = Math.max(0, Number(quote.shipping) || 0);
   const totalQuote = taxableQuote + taxQuote + shippingQuote;
-  const commissionQuote = totalQuote * 0.25;
+  const commissionQuote = totalQuote * SALES_COMMISSION_RATE;
+  const pricingBase = Math.max(0, revenueQuote - discountQuote);
+  const pricingHpp = Math.max(0, Number(quote.qty) || 0) * UNIT_COST_DEFAULT;
+  const pricingCommission = pricingBase * SALES_COMMISSION_RATE;
+  const ownerContributionQuote = pricingBase - pricingHpp - pricingCommission;
 
   return (
     <main className="hub-shell">
@@ -260,7 +271,26 @@ export default function SalesHubPage() {
           {active === "Keuangan" && <Keuangan leads={leads} expenses={expenses} setExpenses={setExpenses} wonRevenue={wonRevenue} totalExpenses={totalExpenses} commissionPayable={commissionPayable} grossProfit={grossProfit} netProfit={netProfit} notify={notify} />}
           {active === "Penawaran harga" && <section className="hub-page">
             <PageHeading eyebrow="DOKUMEN PENAWARAN" title="Penyusunan penawaran harga" description="Siapkan dokumen penawaran resmi, hitung diskon, pajak, dan biaya pengiriman, lalu cetak atau simpan dalam format PDF." action={<button className="btn-secondary" onClick={() => { const d = new Date(); const v = new Date(d); v.setDate(v.getDate()+14); setQuote({number:"SMP/QTN/"+d.toISOString().slice(0,10).replaceAll("-","")+"/"+Math.random().toString(36).slice(2,6).toUpperCase(),date:d.toISOString().slice(0,10),validUntil:v.toISOString().slice(0,10),company:"",contact:"",email:"",phone:"",address:"",qty:1000,price:PRICE_DEFAULT,discount:0,shipping:0,taxRate:0,paymentTerms:"Sesuai kesepakatan",productionLeadTime:"Dikonfirmasi setelah desain dan spesifikasi disetujui",delivery:"Biaya dan alamat pengiriman dikonfirmasi terpisah",notes:"Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final."}); }}><Plus size={15}/> Buat penawaran baru</button>}/>
-            <div className="quote-layout">
+            <section className="pricing-playbook">
+               <div className="pricing-playbook-head">
+                 <div><span className="page-eyebrow">PANDUAN HARGA INTERNAL</span><h2>Harga B2B kalender meja 2027</h2><p>Harga indikatif untuk diskusi awal. Finalisasi tetap mengikuti spesifikasi dan persetujuan owner.</p></div>
+                 <span className="pricing-assumption">Asumsi HPP Rp15.000/pcs · Komisi 25% omzet</span>
+               </div>
+               <div className="pricing-tier-grid">
+                 <article className="pricing-tier featured"><span>DEFAULT · STANDARD CORPORATE</span><b>Rp27.500<small>/pcs</small></b><p>Paket pembuka untuk kebutuhan corporate dengan spesifikasi standar yang disepakati.</p><button type="button" onClick={() => setQuote({...quote,price:PRICE_DEFAULT,product:"Kalender Meja Custom 2027 — Standard Corporate"})}>Gunakan harga ini</button></article>
+                 <article className="pricing-tier"><span>CORPORATE PLUS</span><b>Rp34.900<small>/pcs</small></b><p>Untuk kebutuhan material atau finishing dengan nilai tambah.</p><button type="button" onClick={() => setQuote({...quote,price:PRICE_PLUS,product:"Kalender Meja Custom 2027 — Corporate Plus"})}>Gunakan harga ini</button></article>
+                 <article className="pricing-tier"><span>EXECUTIVE PREMIUM</span><b>Rp49.900–68.000</b><p>Untuk spesifikasi premium, material, finishing, dan packaging khusus.</p><button type="button" onClick={() => setQuote({...quote,price:PRICE_PREMIUM_MIN,product:"Kalender Meja Custom 2027 — Executive Premium"})}>Mulai Rp49.900</button></article>
+                 <article className="pricing-tier floor"><span>BATAS NEGOSIASI</span><b>Rp24.000<small>/pcs</small></b><p>Target kontribusi owner Rp3 juta pada 1.000 pcs. Wajib persetujuan owner sebelum ditawarkan.</p><button type="button" onClick={() => setQuote({...quote,price:PRICE_FLOOR,product:"Kalender Meja Custom 2027 — Standard Corporate"})}>Set harga minimum</button></article>
+               </div>
+               <div className="pricing-margin">
+                 <div><span>Omzet produk</span><b>{money(pricingBase)}</b></div>
+                 <div><span>Estimasi HPP</span><b>− {money(pricingHpp)}</b></div>
+                 <div><span>Komisi sales 25%</span><b>− {money(pricingCommission)}</b></div>
+                 <div className={ownerContributionQuote < 0 ? "owner-contribution negative" : "owner-contribution"}><span>Sisa kontribusi owner*</span><b>{money(ownerContributionQuote)}</b></div>
+               </div>
+               <small className="pricing-footnote">*Simulasi sebelum overhead, pajak, ongkir, biaya desain, dan biaya lain. Berdasarkan HPP Rp15.000/pcs dan komisi 25% dari nilai produk setelah diskon; bukan persetujuan harga final.</small>
+             </section>
+             <div className="quote-layout">
               <div className="panel quote-form">
                 <div className="panel-head"><div><b>Penawaran harga details</b><small>Lengkapi informasi sebelum penawaran dikirim kepada calon pelanggan.</small></div><FileText size={18}/></div>
                 <div className="quote-form-section"><b>Dokumen</b><div className="field-row">
@@ -279,7 +309,7 @@ export default function SalesHubPage() {
                   <label className="field-label">Deskripsi produk<input value={quote.product || "Kalender Meja Custom 2027"} onChange={e=>setQuote({...quote,product:e.target.value})}/></label>
                   <div className="field-row">
                     <label className="field-label">Jumlah (pcs)<input type="number" min="1" value={quote.qty} onChange={e=>setQuote({...quote,qty:e.target.value})}/></label>
-                    <label className="field-label">Harga per pcs (Rp)<input type="number" min="0" value={quote.price} onChange={e=>setQuote({...quote,price:e.target.value})}/></label>
+                    <label className="field-label">Harga per pcs (Rp)<input type="number" min="0" value={quote.price} onChange={e=>setQuote({...quote,price:e.target.value})}/>{Number(quote.price) < PRICE_FLOOR && <small className="price-floor-warning">Di bawah batas negosiasi Rp24.000/pcs. Minta persetujuan owner sebelum penawaran.</small>}</label>
                     <label className="field-label">Diskon (Rp)<input type="number" min="0" value={quote.discount} onChange={e=>setQuote({...quote,discount:e.target.value})}/></label>
                     <label className="field-label">Tarif pajak (%)<input type="number" min="0" max="100" step="0.01" value={quote.taxRate} onChange={e=>setQuote({...quote,taxRate:e.target.value})}/></label>
                     <label className="field-label">Biaya pengiriman (Rp)<input type="number" min="0" value={quote.shipping} onChange={e=>setQuote({...quote,shipping:e.target.value})}/></label>
@@ -495,7 +525,7 @@ function Overview({leads,totalPipeline,wonRevenue,interested,followups,onAdd,onN
     <div className="metric-grid">{cards.map(([label,value,Icon,sub])=><article className="metric-card" key={label}><div className="metric-top"><span>{label}</span><Icon size={17}/></div><b>{value}</b><small>{sub}</small></article>)}</div>
     <div className="overview-grid"><div className="panel"><div className="panel-head"><div><b>Pipeline penjualan snapshot</b><small>Prospect distribution by stage</small></div><button className="text-action" onClick={()=>onNavigate("Pipeline penjualan")}>View pipeline <ArrowUpRight size={14}/></button></div><div className="stage-list">{["New","Qualified","Draft ready","Contacted","Interested","Negotiation","Won"].map((status)=>{const count=leads.filter((x)=>x.status===status).length;const percent=leads.length?Math.round(count/leads.length*100):0;return <div className="stage-row" key={status}><span>{status}</span><div className="stage-track"><i style={{width:percent+"%"}}/></div><b>{count}</b></div>;})}</div><div className="panel-bottom-note"><span><Activity size={14}/> {sent} contacted or beyond</span><span>{leads.length} total prospects</span></div></div>
       <div className="panel priority-panel"><div className="panel-head"><div><b>Next actions</b><small>Keep deals moving</small></div><CalendarClock size={18}/></div><div className="priority-highlight"><span className="priority-icon"><CalendarClock size={17}/></span><div><b>{followups.length} follow-ups due</b><small>Review your next conversations</small></div></div>{followups.slice(0,4).map((lead)=><div className="mini-follow" key={lead.id}><span><b>{lead.company}</b><small>{lead.followup} · {lead.contact || "PIC not set"}</small></span><button onClick={()=>onEmail(lead)}><Mail size={14}/></button></div>)}{!followups.length && <div className="empty-inline">No follow-ups due. Add a date after each outreach.</div>}<button className="btn-secondary full-button" onClick={()=>onNavigate("Tindak lanjut")}>Open follow-up center <ArrowUpRight size={14}/></button></div></div>
-    <div className="campaign-banner"><div><span>FEATURED CAMPAIGN</span><h2>Calendar meja custom 2027</h2><p>Harga acuan Rp68.000/pcs · MOQ target 1.000 pcs · Produksi sesuai spesifikasi final.</p></div><div className="campaign-target"><small>1.000 PCS ESTIMATED ORDER</small><b>{money(68000000)}</b><span>Indicative gross order value</span></div></div>
+    <div className="campaign-banner"><div><span>FEATURED CAMPAIGN</span><h2>Calendar meja custom 2027</h2><p>Mulai dari Rp27.500/pcs · MOQ target 1.000 pcs · Paket Standard Corporate.</p></div><div className="campaign-target"><small>1.000 PCS · STANDARD CORPORATE</small><b>{money(PRICE_DEFAULT * 1000)}</b><span>Harga acuan indikatif</span></div></div>
     <div className="overview-bottom"><div><b>Start with qualified accounts</b><p>Prioritaskan perusahaan dengan kebutuhan merchandise, hadiah pelanggan, atau distribusi multi-cabang yang bisa diverifikasi.</p></div><button className="btn-secondary" onClick={()=>onNavigate("Database prospek")}><Users size={15}/> Manage prospects</button></div>
   </section>;
 }
