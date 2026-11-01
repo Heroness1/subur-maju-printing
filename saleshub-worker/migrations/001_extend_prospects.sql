@@ -1,6 +1,21 @@
 -- Migration 001: extend prospects with frontend lead fields + Lost/Opt-out.
--- Preserves existing rows. Run BEFORE deploying the v2 Worker:
+-- RUN EXACTLY ONCE, on a v1 database. It is NOT safe to re-run after v2
+-- data exists: a second run would rebuild the table from the old column
+-- list and reset v2-only fields (qty, price, area, ...) to defaults.
+-- Pre-check before running: the prospects table must NOT already have an
+-- 'area' column. Check with:
+--   wrangler d1 execute saleshub-db --remote --command "SELECT name FROM pragma_table_info('prospects') WHERE name='area';"
+-- If that returns 'area', the migration is already applied - stop, do not run it.
+-- The schema_migrations marker below makes a second run fail fast on a
+-- UNIQUE constraint instead of silently proceeding; if you see that error,
+-- the migration was already applied.
+-- Run BEFORE deploying the v2 Worker:
 --   wrangler d1 execute saleshub-db --remote --file=./migrations/001_extend_prospects.sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+INSERT INTO schema_migrations (id) VALUES ('001_extend_prospects');
 CREATE TABLE IF NOT EXISTS prospects_v2 (
   id TEXT PRIMARY KEY,
   company TEXT NOT NULL,
