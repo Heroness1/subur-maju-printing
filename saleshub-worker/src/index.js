@@ -217,8 +217,12 @@ export default {
         await env.DB.prepare(
           `INSERT INTO prospects
            (id, company, website, jakarta_address, city, industry, score, stage,
-            pic_name, pic_role, email, draft_email, follow_up_date, source_url, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            pic_name, pic_role, email, draft_email, follow_up_date, source_url, notes,
+            area, qty, price, po_value, source, verification_status, verified_at,
+            reason, sent_date, last_narahubung, company_source_url,
+            contact_source_url, email_source_url)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
           .bind(
             newId,
