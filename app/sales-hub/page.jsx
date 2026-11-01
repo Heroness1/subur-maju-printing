@@ -159,6 +159,9 @@ function mergeLeads(localLeads, apiLeads) {
 export default function SalesHubPage() {
   const [leads, setLeads] = useState(starter);
   const syncedRef = useRef({});
+  const leadsRef = useRef(leads);
+  const syncStateRef = useRef({ running: false, queued: false });
+  useEffect(() => { leadsRef.current = leads; });
   const [expenses, setExpenses] = useState([]);
   const [ready, setReady] = useState(false);
   const [active, setActive] = useState("Overview");
@@ -208,16 +211,22 @@ export default function SalesHubPage() {
           }
         }
       } catch {}
-      const tombstones = readTombstones();
-      const filterTombstones = (list) => list.filter((lead) => !tombstones.includes(lead.id));
-      localLeads = filterTombstones(localLeads);
       try {
         const res = await fetch("/api/prospects?limit=500");
         if (res.ok) {
           const data = await res.json();
-          const apiLeads = filterTombstones(Array.isArray(data.prospects) ? data.prospects.map(fromApiProspect) : []);
+          const apiLeads = Array.isArray(data.prospects) ? data.prospects.map(fromApiProspect) : [];
           if (!cancelled) {
-            const merged = mergeLeads(localLeads, apiLeads);
+            // Local source = cache union latest state (leadsRef wins on
+            // conflict). This keeps edits made while the API fetch was in
+            // flight, which the old code lost by merging only the mount-time cache.
+            const localById = new Map();
+            for (const lead of localLeads) localById.set(lead.id, lead);
+            for (const lead of leadsRef.current) localById.set(lead.id, lead);
+            const tombstones = readTombstones();
+            const localSource = Array.from(localById.values()).filter((lead) => !tombstones.includes(lead.id));
+            const filteredApi = apiLeads.filter((lead) => !tombstones.includes(lead.id));
+            const merged = mergeLeads(localSource, filteredApi);
             syncedRef.current = merged.synced;
             setLeads(merged.leads);
           }
@@ -228,14 +237,31 @@ export default function SalesHubPage() {
     return () => { cancelled = true; };
   }, []);
 
-
   useEffect(() => {
     if (!ready) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, expenses, sender, phone })); } catch {}
-    (async () => {
+    // Serialised sync: concurrent sync runs are the race. If a run is in
+    // flight, a new leads change only sets queued=true; the in-flight run
+    // finishes, then the loop re-runs once with the LATEST leads. No two
+    // runs ever PATCH the same lead concurrently, and a stale run can never
+    // finish after a newer run and overwrite its synced marker or its DB value.
+    const runSync = async () => {
+      if (syncStateRef.current.running) { syncStateRef.current.queued = true; return; }
+      syncStateRef.current.running = true;
+      try {
+        do {
+          syncStateRef.current.queued = false;
+          await syncOnce();
+        } while (syncStateRef.current.queued);
+      } finally { syncStateRef.current.running = false; }
+    };
+    const syncOnce = async () => {
+      const snapshot = leadsRef.current;
       const prev = syncedRef.current;
       const next = {};
-      for (const lead of leads) {
+      const isLive = (id) => leadsRef.current.some((l) => l.id === id) && !readTombstones().includes(id);
+      for (const lead of snapshot) {
+        if (!isLive(lead.id)) continue;
         const body = toApiLead(lead);
         const bodyJson = JSON.stringify(body);
         if (prev[lead.id] === bodyJson) { next[lead.id] = bodyJson; continue; }
@@ -243,12 +269,15 @@ export default function SalesHubPage() {
           let res;
           if (!prev[lead.id]) {
             res = await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lead.id, ...body }) });
-            if (!res.ok) {
+            if (!res.ok && isLive(lead.id)) {
               res = await fetch("/api/prospects/" + encodeURIComponent(lead.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
             }
           } else {
             res = await fetch("/api/prospects/" + encodeURIComponent(lead.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-            if (res.status === 404) {
+            // PATCH 404 fallback ONLY if the lead is still live right now.
+            // Without this guard, a stale PATCH for an already-deleted lead
+            // would POST it back into existence (resurrection).
+            if (res.status === 404 && isLive(lead.id)) {
               res = await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lead.id, ...body }) });
             }
           }
@@ -258,8 +287,10 @@ export default function SalesHubPage() {
           if (prev[lead.id]) next[lead.id] = prev[lead.id];
         }
       }
-      let tombstones = readTombstones();
-      const deletedIds = Object.keys(prev).filter((id) => !leads.some((l) => l.id === id));
+      // Tombstones are only processed for ids NOT in the current snapshot:
+      // a re-added lead must never be deleted by its own old tombstone.
+      let tombstones = readTombstones().filter((id) => !snapshot.some((l) => l.id === id));
+      const deletedIds = Object.keys(prev).filter((id) => !snapshot.some((l) => l.id === id));
       for (const id of Array.from(new Set([...deletedIds, ...tombstones]))) {
         try {
           const res = await fetch("/api/prospects/" + encodeURIComponent(id), { method: "DELETE" });
@@ -271,9 +302,9 @@ export default function SalesHubPage() {
       }
       writeTombstones(tombstones);
       syncedRef.current = next;
-    })();
+    };
+    runSync();
   }, [leads, expenses, sender, phone, ready]);
-
 
   const selected = leads.find((lead) => lead.id === selectedId) || null;
   const filtered = useMemo(() => leads.filter((lead) => {
@@ -308,6 +339,7 @@ export default function SalesHubPage() {
       created: editing?.created || today(),
       updated: today()
     };
+    try { writeTombstones(readTombstones().filter((t) => t !== lead.id)); } catch {}
     setLeads((current) => editing ? current.map((x) => x.id === editing.id ? lead : x) : [lead, ...current]);
     setSelectedId(lead.id);
     setShowForm(false);
@@ -316,6 +348,11 @@ export default function SalesHubPage() {
   }
   function removeLead(id) {
     if (!window.confirm("Hapus prospek ini dari database?")) return;
+    // Synchronous tombstone: this runs in the click handler, before any
+    // async sync. If the browser is closed before the DELETE reaches the
+    // API, the tombstone survives in localStorage and the next load filters
+    // the lead out and retries the DELETE instead of resurrecting it.
+    try { const t = readTombstones(); if (!t.includes(id)) writeTombstones([...t, id]); } catch {}
     setLeads((current) => current.filter((x) => x.id !== id));
     if (selectedId === id) setSelectedId("");
     notify("Prospek dihapus");
