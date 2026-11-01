@@ -50,7 +50,7 @@ function makeEmail(lead, sender, phone) {
 
 
 // --- Cloudflare D1 sync (via the Next.js proxy in app/api/prospects) ---
-// The browser never sees SALESHUB_API_KEY: the proxy holds it server-side.
+// The browser never sees the Worker secret: the proxy holds it server-side.
 // Frontend lead fields are mapped to the Worker prospect fields; extra
 // frontend fields (qty, price, area, source, verification, ...) are stored
 // in the extended Worker schema (saleshub-worker/schema.sql v2).
@@ -118,6 +118,44 @@ function fromApiProspect(prospect) {
   };
 }
 
+
+const TOMBSTONE_KEY = "smp-sales-hub-tombstones-v1";
+function readTombstones() {
+  try {
+    const raw = localStorage.getItem(TOMBSTONE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
+  } catch { return []; }
+}
+function writeTombstones(ids) {
+  try { localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(ids)); } catch {}
+}
+// Merge local cache + API by id. Neither side blindly overwrites the other:
+// - ids only on one side are kept (so a fresh API list does NOT wipe local
+//   leads, and a seed import does NOT get wiped by a stale local cache);
+// - for ids on both sides, the newer `updated` date wins; on a tie the
+//   local version wins and is marked unsynced, so the sync effect pushes it.
+// Returns { leads, synced } where synced maps already-in-sync ids to their
+// API JSON, so the sync effect does not re-POST them.
+function mergeLeads(localLeads, apiLeads) {
+  const byId = new Map();
+  const synced = {};
+  for (const lead of apiLeads) {
+    byId.set(lead.id, lead);
+    synced[lead.id] = JSON.stringify(toApiLead(lead));
+  }
+  for (const lead of localLeads) {
+    const existing = byId.get(lead.id);
+    if (!existing) {
+      byId.set(lead.id, lead);
+    } else if ((lead.updated || "") >= (existing.updated || "")) {
+      byId.set(lead.id, lead);
+      delete synced[lead.id];
+    }
+  }
+  return { leads: Array.from(byId.values()), synced };
+}
+
 export default function SalesHubPage() {
   const [leads, setLeads] = useState(starter);
   const syncedRef = useRef({});
@@ -156,32 +194,32 @@ export default function SalesHubPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Local cache first (instant UI + offline fallback for expenses/sender/phone).
+      let localLeads = [];
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
           const data = JSON.parse(saved);
+          localLeads = Array.isArray(data.leads) ? data.leads : [];
           if (!cancelled) {
-            setLeads(Array.isArray(data.leads) ? data.leads : []);
+            setLeads(localLeads);
             setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
             setSender(data.sender || "Tim Subur Maju Printing");
             setPhone(data.phone || "");
           }
         }
       } catch {}
-      // Then the D1-backed API via the server-side proxy. If it succeeds,
-      // it replaces the leads list (and marks those rows as already synced,
-      // so the sync effect below does not re-POST them).
+      const tombstones = readTombstones();
+      const filterTombstones = (list) => list.filter((lead) => !tombstones.includes(lead.id));
+      localLeads = filterTombstones(localLeads);
       try {
         const res = await fetch("/api/prospects?limit=500");
         if (res.ok) {
           const data = await res.json();
-          const apiLeads = Array.isArray(data.prospects) ? data.prospects.map(fromApiProspect) : [];
+          const apiLeads = filterTombstones(Array.isArray(data.prospects) ? data.prospects.map(fromApiProspect) : []);
           if (!cancelled) {
-            const synced = {};
-            for (const lead of apiLeads) synced[lead.id] = JSON.stringify(toApiLead(lead));
-            syncedRef.current = synced;
-            setLeads(apiLeads);
+            const merged = mergeLeads(localLeads, apiLeads);
+            syncedRef.current = merged.synced;
+            setLeads(merged.leads);
           }
         }
       } catch {}
@@ -190,34 +228,52 @@ export default function SalesHubPage() {
     return () => { cancelled = true; };
   }, []);
 
+
   useEffect(() => {
     if (!ready) return;
-    // Local cache is always kept, so the dashboard still works if the API is down.
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, expenses, sender, phone })); } catch {}
-    // Sync leads to D1 in the background (best-effort: a failed sync never
-    // blocks the UI, and the local cache means nothing is lost).
     (async () => {
       const prev = syncedRef.current;
-      const current = {};
+      const next = {};
       for (const lead of leads) {
         const body = toApiLead(lead);
-        current[lead.id] = JSON.stringify(body);
+        const bodyJson = JSON.stringify(body);
+        if (prev[lead.id] === bodyJson) { next[lead.id] = bodyJson; continue; }
         try {
+          let res;
           if (!prev[lead.id]) {
-            await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lead.id, ...body }) });
-          } else if (prev[lead.id] !== current[lead.id]) {
-            await fetch("/api/prospects/" + encodeURIComponent(lead.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            res = await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lead.id, ...body }) });
+            if (!res.ok) {
+              res = await fetch("/api/prospects/" + encodeURIComponent(lead.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            }
+          } else {
+            res = await fetch("/api/prospects/" + encodeURIComponent(lead.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            if (res.status === 404) {
+              res = await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lead.id, ...body }) });
+            }
           }
-        } catch {}
-      }
-      for (const id of Object.keys(prev)) {
-        if (!current[id]) {
-          try { await fetch("/api/prospects/" + encodeURIComponent(id), { method: "DELETE" }); } catch {}
+          if (res.ok) next[lead.id] = bodyJson;
+          else if (prev[lead.id]) next[lead.id] = prev[lead.id];
+        } catch {
+          if (prev[lead.id]) next[lead.id] = prev[lead.id];
         }
       }
-      syncedRef.current = current;
+      let tombstones = readTombstones();
+      const deletedIds = Object.keys(prev).filter((id) => !leads.some((l) => l.id === id));
+      for (const id of Array.from(new Set([...deletedIds, ...tombstones]))) {
+        try {
+          const res = await fetch("/api/prospects/" + encodeURIComponent(id), { method: "DELETE" });
+          if (res.ok || res.status === 404) tombstones = tombstones.filter((t) => t !== id);
+          else if (!tombstones.includes(id)) tombstones.push(id);
+        } catch {
+          if (!tombstones.includes(id)) tombstones.push(id);
+        }
+      }
+      writeTombstones(tombstones);
+      syncedRef.current = next;
     })();
   }, [leads, expenses, sender, phone, ready]);
+
 
   const selected = leads.find((lead) => lead.id === selectedId) || null;
   const filtered = useMemo(() => leads.filter((lead) => {
