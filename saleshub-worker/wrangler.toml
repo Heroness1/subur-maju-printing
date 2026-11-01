@@ -1,0 +1,23 @@
+# SalesHub Worker API — Cloudflare D1 backend for Subur Maju Printing SalesHub.
+# The Vercel frontend (Next.js) cannot bind D1 directly, so this Worker is
+# the only layer that talks to D1. The frontend will call this Worker's
+# /api/* endpoints, never D1 itself.
+#
+# Deploy steps are in README.md. Do NOT put the API key in this file —
+# set it with: wrangler secret put SALESHUB_API_KEY
+
+name = "saleshub-api"
+main = "src/index.js"
+compatibility_date = "2025-10-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "saleshub-db"
+# Fill this in after `wrangler d1 create saleshub-db`:
+# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+[vars]
+# Frontend origin allowed to call this API (CORS). Change if the
+# production domain changes; localhost is allowed by the code for dev.
+ALLOWED_ORIGIN = "https://subur-maju-printing.vercel.app"
