@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ArrowDownToLine, ArrowUpRight, Bell, Building2, CalendarClock,
   Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, Download,
@@ -48,8 +48,79 @@ function makeEmail(lead, sender, phone) {
   };
 }
 
+
+// --- Cloudflare D1 sync (via the Next.js proxy in app/api/prospects) ---
+// The browser never sees SALESHUB_API_KEY: the proxy holds it server-side.
+// Frontend lead fields are mapped to the Worker prospect fields; extra
+// frontend fields (qty, price, area, source, verification, ...) are stored
+// in the extended Worker schema (saleshub-worker/schema.sql v2).
+const API_STAGES = ["New", "Qualified", "Draft ready", "Contacted", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
+function toApiLead(lead) {
+  return {
+    company: lead.company || "",
+    website: lead.website || null,
+    jakarta_address: lead.area || null,
+    city: "Jakarta",
+    industry: lead.industry || null,
+    score: Number.isInteger(lead.score) ? lead.score : 0,
+    stage: API_STAGES.includes(lead.status) ? lead.status : "New",
+    pic_name: lead.contact || null,
+    pic_role: lead.role || null,
+    email: lead.email || null,
+    draft_email: null,
+    follow_up_date: lead.followup || null,
+    source_url: lead.sourceUrl || lead.companySourceUrl || null,
+    notes: lead.notes || null,
+    area: lead.area || null,
+    qty: Number(lead.qty || 1000),
+    price: Number(lead.price || PRICE_DEFAULT),
+    po_value: lead.poValue === undefined || lead.poValue === "" ? null : Number(lead.poValue),
+    source: lead.source || null,
+    verification_status: lead.verificationStatus || null,
+    verified_at: lead.verifiedAt || null,
+    reason: lead.reason || null,
+    sent_date: lead.sentDate || null,
+    last_narahubung: lead.lastNarahubung || null,
+    company_source_url: lead.companySourceUrl || null,
+    contact_source_url: lead.contactSourceUrl || null,
+    email_source_url: lead.emailSourceUrl || null,
+  };
+}
+function fromApiProspect(prospect) {
+  return {
+    id: prospect.id,
+    company: prospect.company || "",
+    website: prospect.website || "",
+    area: prospect.area || prospect.jakarta_address || "Jakarta",
+    industry: prospect.industry || "",
+    score: prospect.score ?? 0,
+    status: API_STAGES.includes(prospect.stage) ? prospect.stage : "New",
+    contact: prospect.pic_name || "",
+    role: prospect.pic_role || "",
+    email: prospect.email || "",
+    followup: prospect.follow_up_date || "",
+    sourceUrl: prospect.source_url || "",
+    notes: prospect.notes || "",
+    qty: Number(prospect.qty ?? 1000),
+    price: Number(prospect.price ?? PRICE_DEFAULT),
+    poValue: prospect.po_value ?? undefined,
+    source: prospect.source || "",
+    verificationStatus: prospect.verification_status || "Belum diverifikasi",
+    verifiedAt: prospect.verified_at || "",
+    reason: prospect.reason || "",
+    sentDate: prospect.sent_date || "",
+    lastNarahubung: prospect.last_narahubung || "",
+    companySourceUrl: prospect.company_source_url || "",
+    contactSourceUrl: prospect.contact_source_url || "",
+    emailSourceUrl: prospect.email_source_url || "",
+    created: prospect.created_at ? prospect.created_at.slice(0, 10) : today(),
+    updated: prospect.updated_at ? prospect.updated_at.slice(0, 10) : today(),
+  };
+}
+
 export default function SalesHubPage() {
   const [leads, setLeads] = useState(starter);
+  const syncedRef = useRef({});
   const [expenses, setExpenses] = useState([]);
   const [ready, setReady] = useState(false);
   const [active, setActive] = useState("Overview");
@@ -83,22 +154,69 @@ export default function SalesHubPage() {
   const [finderArea, setFinderArea] = useState("DKI Jakarta");
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const data = JSON.parse(saved);
-        setLeads(Array.isArray(data.leads) ? data.leads : []);
-        setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
-        setSender(data.sender || "Tim Subur Maju Printing");
-        setPhone(data.phone || "");
-      }
-    } catch {}
-    setReady(true);
+    let cancelled = false;
+    (async () => {
+      // Local cache first (instant UI + offline fallback for expenses/sender/phone).
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const data = JSON.parse(saved);
+          if (!cancelled) {
+            setLeads(Array.isArray(data.leads) ? data.leads : []);
+            setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
+            setSender(data.sender || "Tim Subur Maju Printing");
+            setPhone(data.phone || "");
+          }
+        }
+      } catch {}
+      // Then the D1-backed API via the server-side proxy. If it succeeds,
+      // it replaces the leads list (and marks those rows as already synced,
+      // so the sync effect below does not re-POST them).
+      try {
+        const res = await fetch("/api/prospects?limit=500");
+        if (res.ok) {
+          const data = await res.json();
+          const apiLeads = Array.isArray(data.prospects) ? data.prospects.map(fromApiProspect) : [];
+          if (!cancelled) {
+            const synced = {};
+            for (const lead of apiLeads) synced[lead.id] = JSON.stringify(toApiLead(lead));
+            syncedRef.current = synced;
+            setLeads(apiLeads);
+          }
+        }
+      } catch {}
+      if (!cancelled) setReady(true);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, expenses, sender, phone }));
+    // Local cache is always kept, so the dashboard still works if the API is down.
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, expenses, sender, phone })); } catch {}
+    // Sync leads to D1 in the background (best-effort: a failed sync never
+    // blocks the UI, and the local cache means nothing is lost).
+    (async () => {
+      const prev = syncedRef.current;
+      const current = {};
+      for (const lead of leads) {
+        const body = toApiLead(lead);
+        current[lead.id] = JSON.stringify(body);
+        try {
+          if (!prev[lead.id]) {
+            await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lead.id, ...body }) });
+          } else if (prev[lead.id] !== current[lead.id]) {
+            await fetch("/api/prospects/" + encodeURIComponent(lead.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          }
+        } catch {}
+      }
+      for (const id of Object.keys(prev)) {
+        if (!current[id]) {
+          try { await fetch("/api/prospects/" + encodeURIComponent(id), { method: "DELETE" }); } catch {}
+        }
+      }
+      syncedRef.current = current;
+    })();
   }, [leads, expenses, sender, phone, ready]);
 
   const selected = leads.find((lead) => lead.id === selectedId) || null;
@@ -141,7 +259,7 @@ export default function SalesHubPage() {
     notify(editing ? "Prospek diperbarui" : "Prospek ditambahkan");
   }
   function removeLead(id) {
-    if (!window.confirm("Hapus prospek ini dari perangkat ini?")) return;
+    if (!window.confirm("Hapus prospek ini dari database?")) return;
     setLeads((current) => current.filter((x) => x.id !== id));
     if (selectedId === id) setSelectedId("");
     notify("Prospek dihapus");
@@ -226,7 +344,7 @@ export default function SalesHubPage() {
           {NAV.map(([label, Icon]) => <button key={label} className={active === label ? "hub-nav-item active" : "hub-nav-item"} onClick={() => { setActive(label); setMobileNav(false); }}><Icon size={17}/><span>{label}</span>{label === "Tindak lanjut" && followups.length > 0 && <i>{followups.length}</i>}</button>)}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-note"><ShieldCheck size={16}/><span>Data tersimpan secara lokal pada browser dan perangkat ini.</span></div>
+          <div className="sidebar-note"><ShieldCheck size={16}/><span>Data disinkronkan ke Cloudflare D1; cache lokal dipakai sebagai cadangan.</span></div>
           <button className="hub-nav-item" onClick={() => setActive("Settings")}><Settings2 size={17}/> <span>Settings</span></button>
           <div className="hub-user"><span className="hub-avatar">SM</span><span><b>Subur Maju</b><small>Ruang kerja penjualan</small></span><MoreDots/></div>
         </div>
