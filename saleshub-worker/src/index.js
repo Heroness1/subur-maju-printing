@@ -19,6 +19,8 @@ const STAGES = [
   'Interested',
   'Negotiation',
   'Won',
+  'Lost',
+  'Opt-out',
 ];
 
 const ALLOWED_FIELDS = [
@@ -36,6 +38,19 @@ const ALLOWED_FIELDS = [
   'follow_up_date',
   'source_url',
   'notes',
+  'area',
+  'qty',
+  'price',
+  'po_value',
+  'source',
+  'verification_status',
+  'verified_at',
+  'reason',
+  'sent_date',
+  'last_narahubung',
+  'company_source_url',
+  'contact_source_url',
+  'email_source_url',
 ];
 
 function corsHeaders(request, env) {
@@ -85,7 +100,15 @@ function validateProspect(input, { partial = false } = {}) {
   ) {
     errors.push('score must be an integer between 0 and 100');
   }
-  for (const key of ['website', 'jakarta_address', 'city', 'industry', 'pic_name', 'pic_role', 'email', 'draft_email', 'follow_up_date', 'source_url', 'notes']) {
+  for (const key of ['qty', 'price']) {
+    if (input[key] !== undefined && input[key] !== null && (!Number.isInteger(input[key]) || input[key] < 0)) {
+      errors.push(`${key} must be a non-negative integer`);
+    }
+  }
+  if (input.po_value !== undefined && input.po_value !== null && typeof input.po_value !== 'number') {
+    errors.push('po_value must be a number');
+  }
+  for (const key of ['website', 'jakarta_address', 'city', 'industry', 'pic_name', 'pic_role', 'email', 'draft_email', 'follow_up_date', 'source_url', 'notes', 'area', 'source', 'verification_status', 'verified_at', 'reason', 'sent_date', 'last_narahubung', 'company_source_url', 'contact_source_url', 'email_source_url']) {
     if (input[key] !== undefined && input[key] !== null && typeof input[key] !== 'string') {
       errors.push(`${key} must be a string`);
     }
@@ -177,12 +200,29 @@ export default {
           follow_up_date: input.follow_up_date || null,
           source_url: input.source_url || null,
           notes: input.notes || null,
+          area: input.area || null,
+          qty: input.qty ?? 1000,
+          price: input.price ?? 27500,
+          po_value: input.po_value ?? null,
+          source: input.source || null,
+          verification_status: input.verification_status || null,
+          verified_at: input.verified_at || null,
+          reason: input.reason || null,
+          sent_date: input.sent_date || null,
+          last_narahubung: input.last_narahubung || null,
+          company_source_url: input.company_source_url || null,
+          contact_source_url: input.contact_source_url || null,
+          email_source_url: input.email_source_url || null,
         };
         await env.DB.prepare(
           `INSERT INTO prospects
            (id, company, website, jakarta_address, city, industry, score, stage,
-            pic_name, pic_role, email, draft_email, follow_up_date, source_url, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            pic_name, pic_role, email, draft_email, follow_up_date, source_url, notes,
+            area, qty, price, po_value, source, verification_status, verified_at,
+            reason, sent_date, last_narahubung, company_source_url,
+            contact_source_url, email_source_url)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
           .bind(
             newId,
@@ -200,6 +240,19 @@ export default {
             values.follow_up_date,
             values.source_url,
             values.notes,
+            values.area,
+            values.qty,
+            values.price,
+            values.po_value,
+            values.source,
+            values.verification_status,
+            values.verified_at,
+            values.reason,
+            values.sent_date,
+            values.last_narahubung,
+            values.company_source_url,
+            values.contact_source_url,
+            values.email_source_url,
           )
           .run();
         const row = await env.DB.prepare('SELECT * FROM prospects WHERE id = ?')

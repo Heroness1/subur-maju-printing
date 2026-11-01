@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ArrowDownToLine, ArrowUpRight, Bell, Building2, CalendarClock,
   Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, Download,
@@ -28,6 +28,19 @@ const starter = [];
 function money(value) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value) || 0);
 }
+// Full-precision version stamp (ISO 8601, millisecond precision). Use this
+// for lead.created/updated, NOT today(): a YYYY-MM-DD date cannot tell two
+// edits on the same day apart, so mergeLeads would fall back to "local wins"
+// and a later API edit made the same day would be overwritten by an older
+// local version. Date-only fields (followup, sentDate, dates in forms) keep
+// using today() - only the version stamp needs full precision.
+function nowStamp() {
+  return new Date().toISOString();
+}
+function stampMs(value) {
+  const t = Date.parse(value || "");
+  return Number.isFinite(t) ? t : 0;
+}
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -48,8 +61,123 @@ function makeEmail(lead, sender, phone) {
   };
 }
 
+
+// --- Cloudflare D1 sync (via the Next.js proxy in app/api/prospects) ---
+// The browser never sees the Worker secret: the proxy holds it server-side.
+// Frontend lead fields are mapped to the Worker prospect fields; extra
+// frontend fields (qty, price, area, source, verification, ...) are stored
+// in the extended Worker schema (saleshub-worker/schema.sql v2).
+const API_STAGES = ["New", "Qualified", "Draft ready", "Contacted", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
+function toApiLead(lead) {
+  return {
+    company: lead.company || "",
+    website: lead.website || null,
+    jakarta_address: lead.area || null,
+    city: "Jakarta",
+    industry: lead.industry || null,
+    score: Number.isInteger(lead.score) ? lead.score : 0,
+    stage: API_STAGES.includes(lead.status) ? lead.status : "New",
+    pic_name: lead.contact || null,
+    pic_role: lead.role || null,
+    email: lead.email || null,
+    draft_email: null,
+    follow_up_date: lead.followup || null,
+    source_url: lead.sourceUrl || lead.companySourceUrl || null,
+    notes: lead.notes || null,
+    area: lead.area || null,
+    qty: Number(lead.qty || 1000),
+    price: Number(lead.price || PRICE_DEFAULT),
+    po_value: lead.poValue === undefined || lead.poValue === "" ? null : Number(lead.poValue),
+    source: lead.source || null,
+    verification_status: lead.verificationStatus || null,
+    verified_at: lead.verifiedAt || null,
+    reason: lead.reason || null,
+    sent_date: lead.sentDate || null,
+    last_narahubung: lead.lastNarahubung || null,
+    company_source_url: lead.companySourceUrl || null,
+    contact_source_url: lead.contactSourceUrl || null,
+    email_source_url: lead.emailSourceUrl || null,
+  };
+}
+function fromApiProspect(prospect) {
+  return {
+    id: prospect.id,
+    company: prospect.company || "",
+    website: prospect.website || "",
+    area: prospect.area || prospect.jakarta_address || "Jakarta",
+    industry: prospect.industry || "",
+    score: prospect.score ?? 0,
+    status: API_STAGES.includes(prospect.stage) ? prospect.stage : "New",
+    contact: prospect.pic_name || "",
+    role: prospect.pic_role || "",
+    email: prospect.email || "",
+    followup: prospect.follow_up_date || "",
+    sourceUrl: prospect.source_url || "",
+    notes: prospect.notes || "",
+    qty: Number(prospect.qty ?? 1000),
+    price: Number(prospect.price ?? PRICE_DEFAULT),
+    poValue: prospect.po_value ?? undefined,
+    source: prospect.source || "",
+    verificationStatus: prospect.verification_status || "Belum diverifikasi",
+    verifiedAt: prospect.verified_at || "",
+    reason: prospect.reason || "",
+    sentDate: prospect.sent_date || "",
+    lastNarahubung: prospect.last_narahubung || "",
+    companySourceUrl: prospect.company_source_url || "",
+    contactSourceUrl: prospect.contact_source_url || "",
+    emailSourceUrl: prospect.email_source_url || "",
+    created: prospect.created_at || nowStamp(),
+    updated: prospect.updated_at || nowStamp(),
+  };
+}
+
+
+const TOMBSTONE_KEY = "smp-sales-hub-tombstones-v1";
+function readTombstones() {
+  try {
+    const raw = localStorage.getItem(TOMBSTONE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
+  } catch { return []; }
+}
+function writeTombstones(ids) {
+  try { localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(ids)); } catch {}
+}
+// Merge local cache + API by id. Neither side blindly overwrites the other:
+// - ids only on one side are kept (so a fresh API list does NOT wipe local
+//   leads, and a seed import does NOT get wiped by a stale local cache);
+// - for ids on both sides, the newer `updated` timestamp wins (compared
+//   as milliseconds, not as strings, and NOT truncated to a day - so an API
+//   edit at 15:00 correctly beats a local edit at 09:00 on the same day);
+//   on an exact tie the local version wins and is marked unsynced, so the
+//   sync effect pushes it.
+// Returns { leads, synced } where synced maps already-in-sync ids to their
+// API JSON, so the sync effect does not re-POST them.
+function mergeLeads(localLeads, apiLeads) {
+  const byId = new Map();
+  const synced = {};
+  for (const lead of apiLeads) {
+    byId.set(lead.id, lead);
+    synced[lead.id] = JSON.stringify(toApiLead(lead));
+  }
+  for (const lead of localLeads) {
+    const existing = byId.get(lead.id);
+    if (!existing) {
+      byId.set(lead.id, lead);
+    } else if (stampMs(lead.updated) >= stampMs(existing.updated)) {
+      byId.set(lead.id, lead);
+      delete synced[lead.id];
+    }
+  }
+  return { leads: Array.from(byId.values()), synced };
+}
+
 export default function SalesHubPage() {
   const [leads, setLeads] = useState(starter);
+  const syncedRef = useRef({});
+  const leadsRef = useRef(leads);
+  const syncStateRef = useRef({ running: false, queued: false });
+  useEffect(() => { leadsRef.current = leads; });
   const [expenses, setExpenses] = useState([]);
   const [ready, setReady] = useState(false);
   const [active, setActive] = useState("Overview");
@@ -83,22 +211,115 @@ export default function SalesHubPage() {
   const [finderArea, setFinderArea] = useState("DKI Jakarta");
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const data = JSON.parse(saved);
-        setLeads(Array.isArray(data.leads) ? data.leads : []);
-        setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
-        setSender(data.sender || "Tim Subur Maju Printing");
-        setPhone(data.phone || "");
-      }
-    } catch {}
-    setReady(true);
+    let cancelled = false;
+    (async () => {
+      let localLeads = [];
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const data = JSON.parse(saved);
+          localLeads = Array.isArray(data.leads) ? data.leads : [];
+          if (!cancelled) {
+            setLeads(localLeads);
+            setExpenses(Array.isArray(data.expenses) ? data.expenses : []);
+            setSender(data.sender || "Tim Subur Maju Printing");
+            setPhone(data.phone || "");
+          }
+        }
+      } catch {}
+      try {
+        const res = await fetch("/api/prospects?limit=500");
+        if (res.ok) {
+          const data = await res.json();
+          const apiLeads = Array.isArray(data.prospects) ? data.prospects.map(fromApiProspect) : [];
+          if (!cancelled) {
+            // Local source = cache union latest state (leadsRef wins on
+            // conflict). This keeps edits made while the API fetch was in
+            // flight, which the old code lost by merging only the mount-time cache.
+            const localById = new Map();
+            for (const lead of localLeads) localById.set(lead.id, lead);
+            for (const lead of leadsRef.current) localById.set(lead.id, lead);
+            const tombstones = readTombstones();
+            const localSource = Array.from(localById.values()).filter((lead) => !tombstones.includes(lead.id));
+            const filteredApi = apiLeads.filter((lead) => !tombstones.includes(lead.id));
+            const merged = mergeLeads(localSource, filteredApi);
+            syncedRef.current = merged.synced;
+            setLeads(merged.leads);
+          }
+        }
+      } catch {}
+      if (!cancelled) setReady(true);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, expenses, sender, phone }));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ leads, expenses, sender, phone })); } catch {}
+    // Serialised sync: concurrent sync runs are the race. If a run is in
+    // flight, a new leads change only sets queued=true; the in-flight run
+    // finishes, then the loop re-runs once with the LATEST leads. No two
+    // runs ever PATCH the same lead concurrently, and a stale run can never
+    // finish after a newer run and overwrite its synced marker or its DB value.
+    const runSync = async () => {
+      if (syncStateRef.current.running) { syncStateRef.current.queued = true; return; }
+      syncStateRef.current.running = true;
+      try {
+        do {
+          syncStateRef.current.queued = false;
+          await syncOnce();
+        } while (syncStateRef.current.queued);
+      } finally { syncStateRef.current.running = false; }
+    };
+    const syncOnce = async () => {
+      const snapshot = leadsRef.current;
+      const prev = syncedRef.current;
+      const next = {};
+      const isLive = (id) => leadsRef.current.some((l) => l.id === id) && !readTombstones().includes(id);
+      for (const lead of snapshot) {
+        if (!isLive(lead.id)) continue;
+        const body = toApiLead(lead);
+        const bodyJson = JSON.stringify(body);
+        if (prev[lead.id] === bodyJson) { next[lead.id] = bodyJson; continue; }
+        try {
+          let res;
+          if (!prev[lead.id]) {
+            res = await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lead.id, ...body }) });
+            if (!res.ok && isLive(lead.id)) {
+              res = await fetch("/api/prospects/" + encodeURIComponent(lead.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            }
+          } else {
+            res = await fetch("/api/prospects/" + encodeURIComponent(lead.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            // PATCH 404 fallback ONLY if the lead is still live right now.
+            // Without this guard, a stale PATCH for an already-deleted lead
+            // would POST it back into existence (resurrection).
+            if (res.status === 404 && isLive(lead.id)) {
+              res = await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lead.id, ...body }) });
+            }
+          }
+          if (res.ok) next[lead.id] = bodyJson;
+          else if (prev[lead.id]) next[lead.id] = prev[lead.id];
+        } catch {
+          if (prev[lead.id]) next[lead.id] = prev[lead.id];
+        }
+      }
+      // Tombstones are only processed for ids NOT in the current snapshot:
+      // a re-added lead must never be deleted by its own old tombstone.
+      let tombstones = readTombstones().filter((id) => !snapshot.some((l) => l.id === id));
+      const deletedIds = Object.keys(prev).filter((id) => !snapshot.some((l) => l.id === id));
+      for (const id of Array.from(new Set([...deletedIds, ...tombstones]))) {
+        try {
+          const res = await fetch("/api/prospects/" + encodeURIComponent(id), { method: "DELETE" });
+          if (res.ok || res.status === 404) tombstones = tombstones.filter((t) => t !== id);
+          else if (!tombstones.includes(id)) tombstones.push(id);
+        } catch {
+          if (!tombstones.includes(id)) tombstones.push(id);
+        }
+      }
+      writeTombstones(tombstones);
+      syncedRef.current = next;
+    };
+    runSync();
   }, [leads, expenses, sender, phone, ready]);
 
   const selected = leads.find((lead) => lead.id === selectedId) || null;
@@ -131,9 +352,10 @@ export default function SalesHubPage() {
       price: Number(data.price || PRICE_DEFAULT),
       poValue: data.poValue === "" ? undefined : Number(data.poValue),
       status: data.status || "New",
-      created: editing?.created || today(),
-      updated: today()
+      created: editing?.created || nowStamp(),
+      updated: nowStamp()
     };
+    try { writeTombstones(readTombstones().filter((t) => t !== lead.id)); } catch {}
     setLeads((current) => editing ? current.map((x) => x.id === editing.id ? lead : x) : [lead, ...current]);
     setSelectedId(lead.id);
     setShowForm(false);
@@ -141,7 +363,12 @@ export default function SalesHubPage() {
     notify(editing ? "Prospek diperbarui" : "Prospek ditambahkan");
   }
   function removeLead(id) {
-    if (!window.confirm("Hapus prospek ini dari perangkat ini?")) return;
+    if (!window.confirm("Hapus prospek ini dari database?")) return;
+    // Synchronous tombstone: this runs in the click handler, before any
+    // async sync. If the browser is closed before the DELETE reaches the
+    // API, the tombstone survives in localStorage and the next load filters
+    // the lead out and retries the DELETE instead of resurrecting it.
+    try { const t = readTombstones(); if (!t.includes(id)) writeTombstones([...t, id]); } catch {}
     setLeads((current) => current.filter((x) => x.id !== id));
     if (selectedId === id) setSelectedId("");
     notify("Prospek dihapus");
@@ -152,14 +379,14 @@ export default function SalesHubPage() {
     setActive("Studio email");
   }
   function updateStatus(id, status) {
-    setLeads((current) => current.map((x) => x.id === id ? { ...x, status, updated: today() } : x));
+    setLeads((current) => current.map((x) => x.id === id ? { ...x, status, updated: nowStamp() } : x));
   }
   function updateDealValue(id, value) {
     const parsed = value === "" ? undefined : Math.max(0, Number(value) || 0);
-    setLeads((current) => current.map((x) => x.id === id ? { ...x, poValue: parsed, updated: today() } : x));
+    setLeads((current) => current.map((x) => x.id === id ? { ...x, poValue: parsed, updated: nowStamp() } : x));
   }
   function markSent(lead) {
-    setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: "Contacted", sentDate: today(), followup: x.followup || new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) } : x));
+    setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: "Contacted", updated: nowStamp(), sentDate: today(), followup: x.followup || new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) } : x));
     notify("Status diperbarui. Pastikan email memang sudah dikirim.");
   }
   async function copyText(value, label) {
@@ -185,7 +412,7 @@ export default function SalesHubPage() {
         const cells = line.match(/("([^"]|"")*"|[^,]*)(,|$)/g) || [];
         const values = cells.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "").replaceAll('""', '"'));
         const item = Object.fromEntries(headers.map((h, i) => [h, values[i] || ""]));
-        return { ...item, id: item.id || makeId(), qty: Number(item.qty || 1000), price: Number(item.price || PRICE_DEFAULT), status: item.status || "New" };
+        return { ...item, id: item.id || makeId(), qty: Number(item.qty || 1000), price: Number(item.price || PRICE_DEFAULT), status: item.status || "New", created: item.created || nowStamp(), updated: nowStamp() };
       }).filter((x) => x.company);
       setLeads((current) => [...imported, ...current]);
       notify(imported.length + " baris diimpor");
@@ -226,7 +453,7 @@ export default function SalesHubPage() {
           {NAV.map(([label, Icon]) => <button key={label} className={active === label ? "hub-nav-item active" : "hub-nav-item"} onClick={() => { setActive(label); setMobileNav(false); }}><Icon size={17}/><span>{label}</span>{label === "Tindak lanjut" && followups.length > 0 && <i>{followups.length}</i>}</button>)}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-note"><ShieldCheck size={16}/><span>Data tersimpan secara lokal pada browser dan perangkat ini.</span></div>
+          <div className="sidebar-note"><ShieldCheck size={16}/><span>Data disinkronkan ke Cloudflare D1; cache lokal dipakai sebagai cadangan.</span></div>
           <button className="hub-nav-item" onClick={() => setActive("Settings")}><Settings2 size={17}/> <span>Settings</span></button>
           <div className="hub-user"><span className="hub-avatar">SM</span><span><b>Subur Maju</b><small>Ruang kerja penjualan</small></span><MoreDots/></div>
         </div>
