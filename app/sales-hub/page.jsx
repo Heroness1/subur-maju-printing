@@ -28,6 +28,19 @@ const starter = [];
 function money(value) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value) || 0);
 }
+// Full-precision version stamp (ISO 8601, millisecond precision). Use this
+// for lead.created/updated, NOT today(): a YYYY-MM-DD date cannot tell two
+// edits on the same day apart, so mergeLeads would fall back to "local wins"
+// and a later API edit made the same day would be overwritten by an older
+// local version. Date-only fields (followup, sentDate, dates in forms) keep
+// using today() - only the version stamp needs full precision.
+function nowStamp() {
+  return new Date().toISOString();
+}
+function stampMs(value) {
+  const t = Date.parse(value || "");
+  return Number.isFinite(t) ? t : 0;
+}
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -113,8 +126,8 @@ function fromApiProspect(prospect) {
     companySourceUrl: prospect.company_source_url || "",
     contactSourceUrl: prospect.contact_source_url || "",
     emailSourceUrl: prospect.email_source_url || "",
-    created: prospect.created_at ? prospect.created_at.slice(0, 10) : today(),
-    updated: prospect.updated_at ? prospect.updated_at.slice(0, 10) : today(),
+    created: prospect.created_at || nowStamp(),
+    updated: prospect.updated_at || nowStamp(),
   };
 }
 
@@ -133,8 +146,11 @@ function writeTombstones(ids) {
 // Merge local cache + API by id. Neither side blindly overwrites the other:
 // - ids only on one side are kept (so a fresh API list does NOT wipe local
 //   leads, and a seed import does NOT get wiped by a stale local cache);
-// - for ids on both sides, the newer `updated` date wins; on a tie the
-//   local version wins and is marked unsynced, so the sync effect pushes it.
+// - for ids on both sides, the newer `updated` timestamp wins (compared
+//   as milliseconds, not as strings, and NOT truncated to a day - so an API
+//   edit at 15:00 correctly beats a local edit at 09:00 on the same day);
+//   on an exact tie the local version wins and is marked unsynced, so the
+//   sync effect pushes it.
 // Returns { leads, synced } where synced maps already-in-sync ids to their
 // API JSON, so the sync effect does not re-POST them.
 function mergeLeads(localLeads, apiLeads) {
@@ -148,7 +164,7 @@ function mergeLeads(localLeads, apiLeads) {
     const existing = byId.get(lead.id);
     if (!existing) {
       byId.set(lead.id, lead);
-    } else if ((lead.updated || "") >= (existing.updated || "")) {
+    } else if (stampMs(lead.updated) >= stampMs(existing.updated)) {
       byId.set(lead.id, lead);
       delete synced[lead.id];
     }
@@ -336,8 +352,8 @@ export default function SalesHubPage() {
       price: Number(data.price || PRICE_DEFAULT),
       poValue: data.poValue === "" ? undefined : Number(data.poValue),
       status: data.status || "New",
-      created: editing?.created || today(),
-      updated: today()
+      created: editing?.created || nowStamp(),
+      updated: nowStamp()
     };
     try { writeTombstones(readTombstones().filter((t) => t !== lead.id)); } catch {}
     setLeads((current) => editing ? current.map((x) => x.id === editing.id ? lead : x) : [lead, ...current]);
@@ -363,14 +379,14 @@ export default function SalesHubPage() {
     setActive("Studio email");
   }
   function updateStatus(id, status) {
-    setLeads((current) => current.map((x) => x.id === id ? { ...x, status, updated: today() } : x));
+    setLeads((current) => current.map((x) => x.id === id ? { ...x, status, updated: nowStamp() } : x));
   }
   function updateDealValue(id, value) {
     const parsed = value === "" ? undefined : Math.max(0, Number(value) || 0);
-    setLeads((current) => current.map((x) => x.id === id ? { ...x, poValue: parsed, updated: today() } : x));
+    setLeads((current) => current.map((x) => x.id === id ? { ...x, poValue: parsed, updated: nowStamp() } : x));
   }
   function markSent(lead) {
-    setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: "Contacted", sentDate: today(), followup: x.followup || new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) } : x));
+    setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: "Contacted", updated: nowStamp(), sentDate: today(), followup: x.followup || new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10) } : x));
     notify("Status diperbarui. Pastikan email memang sudah dikirim.");
   }
   async function copyText(value, label) {
@@ -396,7 +412,7 @@ export default function SalesHubPage() {
         const cells = line.match(/("([^"]|"")*"|[^,]*)(,|$)/g) || [];
         const values = cells.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "").replaceAll('""', '"'));
         const item = Object.fromEntries(headers.map((h, i) => [h, values[i] || ""]));
-        return { ...item, id: item.id || makeId(), qty: Number(item.qty || 1000), price: Number(item.price || PRICE_DEFAULT), status: item.status || "New" };
+        return { ...item, id: item.id || makeId(), qty: Number(item.qty || 1000), price: Number(item.price || PRICE_DEFAULT), status: item.status || "New", created: item.created || nowStamp(), updated: nowStamp() };
       }).filter((x) => x.company);
       setLeads((current) => [...imported, ...current]);
       notify(imported.length + " baris diimpor");
