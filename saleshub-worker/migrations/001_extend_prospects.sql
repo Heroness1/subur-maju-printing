@@ -1,21 +1,39 @@
 -- Migration 001: extend prospects with frontend lead fields + Lost/Opt-out.
--- RUN EXACTLY ONCE, on a v1 database. It is NOT safe to re-run after v2
--- data exists: a second run would rebuild the table from the old column
--- list and reset v2-only fields (qty, price, area, ...) to defaults.
--- Pre-check before running: the prospects table must NOT already have an
--- 'area' column. Check with:
---   wrangler d1 execute saleshub-db --remote --command "SELECT name FROM pragma_table_info('prospects') WHERE name='area';"
--- If that returns 'area', the migration is already applied - stop, do not run it.
--- The schema_migrations marker below makes a second run fail fast on a
--- UNIQUE constraint instead of silently proceeding; if you see that error,
--- the migration was already applied.
+-- RUN EXACTLY ONCE, on a v1 database.
+--
+-- ATOMICITY, HONESTLY: D1 rejects BEGIN/COMMIT (D1 wraps a single query
+-- or a batch in a transaction itself and does not expose explicit
+-- transactions), so do NOT add BEGIN/COMMIT to this file - it will fail
+-- on D1. wrangler d1 execute --file also does not promise all-or-nothing
+-- for a multi-statement file, so a half-migration is possible in theory.
+-- That is why this file is written to be RECOVERABLE, not just "run once":
+--   1. BACK UP FIRST (mandatory):
+--        wrangler d1 export saleshub-db --remote --output backup-saleshub-db.sql
+--   2. Pre-check: the prospects table must NOT already have an 'area' column:
+--        wrangler d1 execute saleshub-db --remote --command "SELECT name FROM pragma_table_info('prospects') WHERE name='area';"
+--      If that returns 'area', stop - the migration is already applied.
+--   3. Run this file, then VERIFY (row count must match the backup, and
+--      the new columns must exist):
+--        wrangler d1 execute saleshub-db --remote --command "SELECT COUNT(*) FROM prospects;"
+--        wrangler d1 execute saleshub-db --remote --command "SELECT name FROM pragma_table_info('prospects') WHERE name IN ('area','qty','price');"
+--   4. The schema_migrations marker is LAST on purpose. The old version
+--      put it FIRST, which was worse: a failure after the marker left a
+--      "migrated" marker on a half-migrated table and blocked retry.
+--      With the marker last, a failure before it leaves no marker, and a
+--      retry is possible in every case EXCEPT failure between DROP and
+--      RENAME (see recovery below).
+-- RECOVERY:
+--   - Failure before DROP: just re-run this file. CREATE ... IF NOT EXISTS
+--     and INSERT OR IGNORE make the copy step idempotent (no duplicates).
+--   - Failure between DROP and RENAME: prospects is gone, but the data is
+--     intact in prospects_v2. Do NOT re-run this file. Recover with only:
+--        ALTER TABLE prospects_v2 RENAME TO prospects;
+--     then create the three indexes at the bottom of this file by hand.
+--   - Failure after RENAME: re-running is safe only if no v2-only data
+--     (qty, price, area, ...) has been written yet; otherwise a re-run
+--     rebuilds from the old column list and resets those fields.
 -- Run BEFORE deploying the v2 Worker:
 --   wrangler d1 execute saleshub-db --remote --file=./migrations/001_extend_prospects.sql
-CREATE TABLE IF NOT EXISTS schema_migrations (
-  id TEXT PRIMARY KEY,
-  applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-INSERT INTO schema_migrations (id) VALUES ('001_extend_prospects');
 CREATE TABLE IF NOT EXISTS prospects_v2 (
   id TEXT PRIMARY KEY,
   company TEXT NOT NULL,
@@ -62,3 +80,8 @@ ALTER TABLE prospects_v2 RENAME TO prospects;
 CREATE INDEX IF NOT EXISTS idx_prospects_stage ON prospects (stage);
 CREATE INDEX IF NOT EXISTS idx_prospects_score ON prospects (score DESC);
 CREATE INDEX IF NOT EXISTS idx_prospects_follow_up ON prospects (follow_up_date);
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+INSERT INTO schema_migrations (id) VALUES ('001_extend_prospects');
