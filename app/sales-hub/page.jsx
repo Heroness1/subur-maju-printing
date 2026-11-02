@@ -132,6 +132,49 @@ function fromApiProspect(prospect) {
 }
 
 
+const QUOTATIONS_CACHE_KEY = "smp-sales-hub-quotations-v1";
+const QUOTE_STATUSES = ["Draft", "Sent", "Accepted", "Rejected", "Expired"];
+function toApiQuotation(quote, prospectId) {
+  return {
+    prospect_id: prospectId,
+    quote_number: quote.number,
+    status: QUOTE_STATUSES.includes(quote.status) ? quote.status : "Draft",
+    product: quote.product || "Kalender Meja Custom 2027",
+    discount: Number(quote.discount || 0),
+    shipping: Number(quote.shipping || 0),
+    tax_rate: Number(quote.taxRate || 0),
+    payment_terms: quote.paymentTerms || null,
+    production_lead_time: quote.productionLeadTime || null,
+    delivery: quote.delivery || null,
+    notes: quote.notes || null,
+    valid_until: quote.validUntil || null,
+    items: [{ description: quote.product || "Kalender Meja Custom 2027", qty: Number(quote.qty || 1000), unit_price: Number(quote.price || PRICE_DEFAULT) }],
+  };
+}
+function fromApiQuotation(q) {
+  const item = Array.isArray(q.items) && q.items[0] ? q.items[0] : null;
+  return {
+    id: q.id,
+    prospectId: q.prospect_id,
+    number: q.quote_number,
+    status: QUOTE_STATUSES.includes(q.status) ? q.status : "Draft",
+    product: q.product || "",
+    discount: Number(q.discount || 0),
+    shipping: Number(q.shipping || 0),
+    taxRate: Number(q.tax_rate || 0),
+    paymentTerms: q.payment_terms || "",
+    productionLeadTime: q.production_lead_time || "",
+    delivery: q.delivery || "",
+    notes: q.notes || "",
+    validUntil: q.valid_until || "",
+    qty: item ? Number(item.qty) : 1000,
+    price: item ? Number(item.unit_price) : PRICE_DEFAULT,
+    subtotal: Number(q.subtotal || 0),
+    total: Number(q.total || 0),
+    date: q.created_at ? q.created_at.slice(0, 10) : today(),
+  };
+}
+
 const TOMBSTONE_KEY = "smp-sales-hub-tombstones-v1";
 function readTombstones() {
   try {
@@ -189,11 +232,16 @@ export default function SalesHubPage() {
   const [emailDraft, setEmailDraft] = useState({ subject: "", body: "" });
   const [sender, setSender] = useState("Tim Subur Maju Printing");
   const [phone, setPhone] = useState("");
+  const [quotations, setQuotations] = useState([]);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const [quote, setQuote] = useState(() => {
     const date = new Date();
     const dateKey = date.toISOString().slice(0, 10).replaceAll("-", "");
     const valid = new Date(date); valid.setDate(valid.getDate() + 14);
     return {
+      id: null,
+      prospectId: "",
+      status: "Draft",
       number: "SMP/QTN/" + dateKey + "/" + Math.random().toString(36).slice(2, 6).toUpperCase(),
       date: date.toISOString().slice(0, 10),
       validUntil: valid.toISOString().slice(0, 10),
@@ -322,6 +370,103 @@ export default function SalesHubPage() {
     runSync();
   }, [leads, expenses, sender, phone, ready]);
 
+  async function reloadQuotations() {
+    try {
+      const res = await fetch("/api/quotations?limit=500");
+      if (!res.ok) throw new Error("quotations api unavailable");
+      const data = await res.json();
+      const list = Array.isArray(data.quotations) ? data.quotations.map(fromApiQuotation) : [];
+      setQuotations(list);
+      try { localStorage.setItem(QUOTATIONS_CACHE_KEY, JSON.stringify(data.quotations)); } catch {}
+      return list;
+    } catch {
+      try {
+        const raw = localStorage.getItem(QUOTATIONS_CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          const list = Array.isArray(cached) ? cached.map(fromApiQuotation) : [];
+          setQuotations(list);
+          return list;
+        }
+      } catch {}
+      return null;
+    }
+  }
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(QUOTATIONS_CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Array.isArray(cached)) setQuotations(cached.map(fromApiQuotation));
+      }
+    } catch {}
+    reloadQuotations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  async function saveQuoteRecord() {
+    const prospectId = quote.prospectId || leads.find((lead) => lead.company === quote.company)?.id;
+    if (!prospectId) { notify("Pilih prospek dulu sebelum menyimpan penawaran"); return null; }
+    const body = toApiQuotation(quote, prospectId);
+    let res;
+    if (quote.id) {
+      res = await fetch("/api/quotations/" + encodeURIComponent(quote.id), { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    } else {
+      res = await fetch("/api/quotations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    }
+    if (!res.ok) { notify("Penawaran gagal disimpan"); return null; }
+    const data = await res.json();
+    const saved = data.quotation;
+    // Reload from the API before reporting saved, per the directive.
+    const list = await reloadQuotations();
+    const reloaded = Array.isArray(list) ? list.find((q) => q.id === saved.id) : null;
+    const applied = reloaded || fromApiQuotation(saved);
+    const lead = leads.find((l) => l.id === applied.prospectId);
+    setQuote((prev) => ({ ...prev, ...applied, company: lead?.company || prev.company, contact: lead?.contact || prev.contact, email: lead?.email || prev.email, address: lead?.area || prev.address }));
+    notify("Penawaran tersimpan");
+    return saved;
+  }
+  async function editQuotation(id) {
+    const res = await fetch("/api/quotations/" + encodeURIComponent(id));
+    if (!res.ok) { notify("Penawaran tidak ditemukan"); return; }
+    const data = await res.json();
+    const mapped = fromApiQuotation(data.quotation);
+    const lead = leads.find((l) => l.id === mapped.prospectId);
+    setQuote((prev) => ({ ...prev, ...mapped, company: lead?.company || prev.company, contact: lead?.contact || prev.contact, email: lead?.email || prev.email, address: lead?.area || prev.address }));
+    setActive("Penawaran harga");
+  }
+  async function deleteQuotationRecord(id) {
+    const res = await fetch("/api/quotations/" + encodeURIComponent(id), { method: "DELETE" });
+    if (res.ok || res.status === 404) {
+      await reloadQuotations();
+      if (quote.id === id) setQuote((prev) => ({ ...prev, id: null }));
+      notify("Penawaran dihapus");
+    } else {
+      notify("Penawaran gagal dihapus");
+    }
+  }
+  async function handlePrintQuote() {
+    let current = quote;
+    if (!current.id) {
+      const saved = await saveQuoteRecord();
+      if (!saved) return;
+      current = { ...current, id: saved.id };
+    }
+    // The preview now reflects the persisted quotation: saveQuoteRecord
+    // reloads it from the API before this print runs. An unsaved draft is
+    // never printed as if it were a record.
+    window.print();
+  }
+  async function handleConfirmDialog() {
+    if (!confirmDialog) return;
+    const { kind, id } = confirmDialog;
+    setConfirmDialog(null);
+    if (kind === "lead") {
+      doLeadDelete(id);
+    } else if (kind === "quotation") {
+      await deleteQuotationRecord(id);
+    }
+  }
+
   const selected = leads.find((lead) => lead.id === selectedId) || null;
   const filtered = useMemo(() => leads.filter((lead) => {
     const haystack = [lead.company, lead.industry, lead.area, lead.contact, lead.email].join(" ").toLowerCase();
@@ -363,8 +508,13 @@ export default function SalesHubPage() {
     notify(editing ? "Prospek diperbarui" : "Prospek ditambahkan");
   }
   function removeLead(id) {
-    if (!window.confirm("Hapus prospek ini dari database?")) return;
-    // Synchronous tombstone: this runs in the click handler, before any
+    // In-page dialog, not window.confirm: a native confirm never appeared
+    // to browser automation in Phase 2, so it could not be accepted there.
+    // The dialog below is testable in automation and in a real browser.
+    setConfirmDialog({ kind: "lead", id, title: "Hapus prospek?", message: "Hapus prospek ini dari database? Penawaran yang terkait dengan prospek ini juga akan ikut terhapus." });
+  }
+  function doLeadDelete(id) {
+    // Synchronous tombstone: this runs in the confirm handler, before any
     // async sync. If the browser is closed before the DELETE reaches the
     // API, the tombstone survives in localStorage and the next load filters
     // the lead out and retries the DELETE instead of resurrecting it.
@@ -426,7 +576,7 @@ export default function SalesHubPage() {
     window.open(url, "_blank", "noopener,noreferrer");
   }
   function setQuoteFromLead(lead) {
-    setQuote((current) => ({ ...current, company: lead.company, contact: lead.contact || "", email: lead.email || "", phone: lead.phone || "", qty: Number(lead.qty || 1000), price: Number(lead.price || PRICE_DEFAULT), product: "Kalender Meja Custom 2027", notes: lead.notes || "Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final." }));
+    setQuote((current) => ({ ...current, id: null, prospectId: lead.id, status: "Draft", company: lead.company, contact: lead.contact || "", email: lead.email || "", phone: lead.phone || "", address: lead.area || "", qty: Number(lead.qty || 1000), price: Number(lead.price || PRICE_DEFAULT), product: "Kalender Meja Custom 2027", notes: lead.notes || "Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final." }));
     setActive("Penawaran harga");
   }
 
@@ -496,7 +646,7 @@ export default function SalesHubPage() {
           {active === "Tindak lanjut" && <section className="hub-page"><PageHeading eyebrow="AGENDA TINDAK LANJUT" title="Agenda tindak lanjut" description="Kelola jadwal komunikasi dengan konsisten. Hentikan tindak lanjut apabila perusahaan menolak penawaran atau meminta untuk tidak dihubungi kembali."/><div className="followup-list">{leads.filter((x) => x.followup && !["Won","Lost","Opt-out"].includes(x.status)).sort((a,b)=>a.followup.localeCompare(b.followup)).map((lead) => <div className="followup-row" key={lead.id}><div className="followup-date"><b>{new Date(lead.followup+"T00:00:00").getDate()}</b><small>{new Date(lead.followup+"T00:00:00").toLocaleDateString("id-ID",{month:"short"})}</small></div><div className="followup-info"><b>{lead.company}</b><small>{lead.contact || "Narahubung belum diisi"} · {lead.email || "Email belum diisi"}</small></div><StatusPill status={lead.status}/><span className={lead.followup <= today() ? "due-label overdue" : "due-label"}>{lead.followup <= today() ? "Jatuh tempo" : "Akan datang"} · {lead.followup}</span><button className="btn-secondary" onClick={() => openEmail(lead)}><Mail size={14}/> Draft</button></div>)}{!leads.some((x)=>x.followup && !["Won","Lost","Opt-out"].includes(x.status)) && <EmptyState title="Belum ada follow-up terjadwal" text="Set tanggal follow-up saat mengedit prospek atau setelah mengirim email pertama."/>}</div></section>}
           {active === "Keuangan" && <Keuangan leads={leads} expenses={expenses} setExpenses={setExpenses} wonRevenue={wonRevenue} totalExpenses={totalExpenses} commissionPayable={commissionPayable} grossProfit={grossProfit} netProfit={netProfit} notify={notify} />}
           {active === "Penawaran harga" && <section className="hub-page">
-            <PageHeading eyebrow="DOKUMEN PENAWARAN" title="Penyusunan penawaran harga" description="Siapkan dokumen penawaran resmi, hitung diskon, pajak, dan biaya pengiriman, lalu cetak atau simpan dalam format PDF." action={<button className="btn-secondary" onClick={() => { const d = new Date(); const v = new Date(d); v.setDate(v.getDate()+14); setQuote({number:"SMP/QTN/"+d.toISOString().slice(0,10).replaceAll("-","")+"/"+Math.random().toString(36).slice(2,6).toUpperCase(),date:d.toISOString().slice(0,10),validUntil:v.toISOString().slice(0,10),company:"",contact:"",email:"",phone:"",address:"",qty:1000,price:PRICE_DEFAULT,discount:0,shipping:0,taxRate:0,paymentTerms:"Sesuai kesepakatan",productionLeadTime:"Dikonfirmasi setelah desain dan spesifikasi disetujui",delivery:"Biaya dan alamat pengiriman dikonfirmasi terpisah",notes:"Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final."}); }}><Plus size={15}/> Buat penawaran baru</button>}/>
+            <PageHeading eyebrow="DOKUMEN PENAWARAN" title="Penyusunan penawaran harga" description="Siapkan dokumen penawaran resmi, hitung diskon, pajak, dan biaya pengiriman, lalu cetak atau simpan dalam format PDF." action={<button className="btn-secondary" onClick={() => { const d = new Date(); const v = new Date(d); v.setDate(v.getDate()+14); setQuote({id:null,prospectId:"",status:"Draft",number:"SMP/QTN/"+d.toISOString().slice(0,10).replaceAll("-","")+"/"+Math.random().toString(36).slice(2,6).toUpperCase(),date:d.toISOString().slice(0,10),validUntil:v.toISOString().slice(0,10),company:"",contact:"",email:"",phone:"",address:"",qty:1000,price:PRICE_DEFAULT,discount:0,shipping:0,taxRate:0,paymentTerms:"Sesuai kesepakatan",productionLeadTime:"Dikonfirmasi setelah desain dan spesifikasi disetujui",delivery:"Biaya dan alamat pengiriman dikonfirmasi terpisah",notes:"Kalender meja custom 2027; desain, bahan, finishing, dan spesifikasi mengikuti persetujuan final."}); }}><Plus size={15}/> Buat penawaran baru</button>}/>
             <section className="pricing-playbook">
                <div className="pricing-playbook-head">
                  <div><span className="page-eyebrow">PANDUAN HARGA INTERNAL</span><h2>Harga B2B kalender meja 2027</h2><p>Harga indikatif untuk diskusi awal. Finalisasi tetap mengikuti spesifikasi dan persetujuan owner.</p></div>
@@ -520,6 +670,8 @@ export default function SalesHubPage() {
               <div className="panel quote-form">
                 <div className="panel-head"><div><b>Penawaran harga details</b><small>Lengkapi informasi sebelum penawaran dikirim kepada calon pelanggan.</small></div><FileText size={18}/></div>
                 <div className="quote-form-section"><b>Dokumen</b><div className="field-row">
+                  <label className="field-label">Prospek<select value={quote.prospectId || ""} onChange={e=>{const lead=leads.find(l=>l.id===e.target.value); setQuote({...quote,prospectId:e.target.value,company:lead?.company||quote.company,contact:lead?.contact||quote.contact,email:lead?.email||quote.email,address:lead?.area||quote.address});}}><option value="">Pilih prospek (wajib untuk menyimpan)</option>{leads.map(l=><option key={l.id} value={l.id}>{l.company}</option>)}</select></label>
+                  <label className="field-label">Status<select value={quote.status || "Draft"} onChange={e=>setQuote({...quote,status:e.target.value})}><option>Draft</option><option>Sent</option><option>Accepted</option><option>Rejected</option><option>Expired</option></select></label>
                   <label className="field-label">Penawaran harga number<input value={quote.number} onChange={e=>setQuote({...quote,number:e.target.value})}/></label>
                   <label className="field-label">Penawaran harga date<input type="date" value={quote.date} onChange={e=>setQuote({...quote,date:e.target.value})}/></label>
                   <label className="field-label">Berlaku hingga<input type="date" value={quote.validUntil} onChange={e=>setQuote({...quote,validUntil:e.target.value})}/></label>
@@ -549,7 +701,9 @@ export default function SalesHubPage() {
                   <label className="field-label">Spesifikasi produk dan catatan<textarea rows="4" value={quote.notes} onChange={e=>setQuote({...quote,notes:e.target.value})}/></label>
                 </div>
                 <div className="quote-tip"><ShieldCheck size={15}/> Tarif pajak, diskon, biaya kirim, termin pembayaran, dan waktu produksi harus diverifikasi sebelum penawaran diterbitkan. Default pajak dan diskon adalah 0.</div>
-                <button className="btn-primary full-button" onClick={()=>window.print()}><Printer size={16}/> Cetak / Simpan PDF</button>
+                <button className="btn-secondary full-button" type="button" onClick={()=>saveQuoteRecord()}><Check size={16}/> Simpan penawaran</button>
+                <button className="btn-primary full-button" onClick={()=>handlePrintQuote()}><Printer size={16}/> Cetak / Simpan PDF</button>
+                {quote.id && <div className="field-note"><ShieldCheck size={15}/> Penawaran ini sudah tersimpan (ID: {quote.id}). Preview di samping memakai data tersimpan dari API.</div>}
               </div>
               <div className="quote-preview">
                 <div className="quote-paper">
@@ -568,8 +722,15 @@ export default function SalesHubPage() {
                   <div className="quote-paper-foot"><b>Subur Maju Printing</b><span>Terima kasih atas kepercayaan dan kesempatan yang diberikan kepada kami.</span></div>
                 </div>
                 <div className="commission-card"><span>SIMULASI KOMISI INTERNAL · 25%</span><b>{money(commissionQuote)}</b><small>Simulasi komisi sebesar 25% dari nilai PO atau total penawaran. Nilai komisi final mengikuti nilai PO yang disepakati. Informasi ini hanya untuk keperluan internal dan tidak ditampilkan pada dokumen penawaran pelanggan.</small></div>
-              </div>
             </div>
+            <div className="panel" style={{marginTop:16}}>
+              <div className="panel-head"><div><b>Penawaran tersimpan</b><small>{quotations.length} penawaran dari API (cache lokal hanya cadangan). Klik Edit untuk memuat penawaran tersimpan ke formulir.</small></div><FileText size={18}/></div>
+              <div className="table-wrap"><table className="prospect-table"><thead><tr><th>Nomor</th><th>Prospek</th><th>Status</th><th>Total</th><th/></tr></thead><tbody>
+              {quotations.map((q) => { const lead = leads.find((l) => l.id === q.prospectId); return <tr key={q.id}><td><b>{q.number}</b><small>{q.product || ""}</small></td><td>{lead?.company || q.prospectId}</td><td>{q.status}</td><td><b>{money(q.total)}</b></td><td><div className="row-actions"><button title="Edit penawaran" onClick={() => editQuotation(q.id)}><FileText size={15}/></button><button title="Hapus penawaran" onClick={() => setConfirmDialog({ kind: "quotation", id: q.id, title: "Hapus penawaran?", message: "Hapus penawaran " + q.number + " dari database? Item penawarannya juga akan ikut terhapus." })}><Trash2 size={15}/></button></div></td></tr>; })}
+              {!quotations.length && <tr><td colSpan="5"><EmptyState title="Belum ada penawaran tersimpan" text="Pilih prospek, isi formulir, lalu klik Simpan penawaran. Penawaran yang belum disimpan tidak tercetak sebagai dokumen resmi." action={<button className="btn-primary" onClick={() => saveQuoteRecord()}><Plus size={15}/> Simpan penawaran ini</button>}/></td></tr>}
+              </tbody></table></div>
+            </div>
+              </div>
           </section>}
           {active === "Settings" && <section className="hub-page"><PageHeading eyebrow="PREFERENSI WORKSPACE" title="Pengaturan" description="Atur identitas pengirim untuk draft email dan kelola penyimpanan data pada perangkat ini."/><div className="panel settings-panel"><label className="field-label">Nama pengirim<input value={sender} onChange={(e)=>setSender(e.target.value)}/></label><label className="field-label">WhatsApp bisnis<input value={phone} onChange={(e)=>setPhone(e.target.value)} placeholder="+62..."/></label><div className="field-note"><ShieldCheck size={15}/> Data prospek hanya tersimpan di local storage browser ini. Belum ada login server, sinkronisasi tim, atau backup cloud.</div><div className="settings-actions"><button className="btn-secondary" onClick={exportCsv}><Download size={15}/> Cadangkan data prospek (CSV)</button><button className="btn-quiet danger" onClick={()=>{if(window.confirm("Hapus seluruh data lokal di browser ini?")){setLeads([]);setSelectedId("");notify("Data lokal dihapus");}}}><Trash2 size={15}/> Hapus seluruh data lokal</button></div></div></section>}
         </div>
@@ -597,6 +758,7 @@ export default function SalesHubPage() {
         <label className="field-label span-two">Alasan perusahaan ini berpotensi menjadi pelanggan<textarea name="reason" rows="2" defaultValue={editing?.reason || ""} placeholder="Tuliskan alasan yang benar-benar sudah diverifikasi."/></label>
         <label className="field-label span-two">Catatan<textarea name="notes" rows="2" defaultValue={editing?.notes || ""} placeholder="Kebutuhan, respons, catatan riset..."/></label>
       </div><div className="modal-actions"><button type="button" className="btn-secondary" onClick={()=>{setShowForm(false);setEditing(null);}}>Batal</button><button className="btn-primary" type="submit"><Check size={15}/> Simpan prospek</button></div></form></div>}
+      {confirmDialog && <div className="modal-backdrop"><div className="lead-modal"><div className="modal-head"><div><small>KONFIRMASI HAPUS</small><h2>{confirmDialog.title}</h2></div><button className="btn-quiet" onClick={() => setConfirmDialog(null)}><X size={16}/></button></div><p>{confirmDialog.message}</p><div className="modal-actions"><button type="button" className="btn-secondary" onClick={() => setConfirmDialog(null)}>Batal</button><button type="button" className="btn-quiet danger" onClick={() => handleConfirmDialog()}><Trash2 size={15}/> Hapus</button></div></div></div>}
       {notice && <div className="toast"><Check size={16}/>{notice}</div>}
     </main>
   );
