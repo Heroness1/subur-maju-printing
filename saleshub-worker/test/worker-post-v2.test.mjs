@@ -22,6 +22,7 @@ function makeEnv() {
   const db = new DatabaseSync(":memory:");
   db.exec(SCHEMA);
   const mockDb = {
+    batch(statements) { return statements.map((stmt) => stmt.run()); },
     prepare(sql) {
       let params = [];
       return {
