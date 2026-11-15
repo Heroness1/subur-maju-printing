@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import {
-  ArrowRight, ArrowUpRight, BadgeCheck, Box, CalendarDays, CheckCircle2,
-  ChevronDown, Clock3, FileText, Menu, MessageCircle, PackageCheck,
+  ArrowRight, ArrowUpRight, BadgeCheck, Box, CheckCircle2,
+  ChevronDown, FileText, Menu, MessageCircle, PackageCheck,
   Printer, Search, ShieldCheck, Sparkles, Truck, X
 } from "lucide-react";
 
@@ -18,8 +18,8 @@ const products = [
   { id: 6, name: "Undangan", category: "Dokumen", desc: "Cetak undangan untuk acara perusahaan maupun kebutuhan personal.", image: "photo-1519741497674-611481863552", tag: "Acara" },
   { id: 7, name: "Kemasan & Packaging", category: "Kemasan", desc: "Kemasan custom untuk mendukung tampilan dan identitas produk.", image: "photo-1607082349566-187342175e2f", tag: "Produk bisnis" },
   { id: 8, name: "Dokumen & Buku", category: "Dokumen", desc: "Kebutuhan cetak dokumen, booklet, buku, dan materi presentasi.", image: "photo-1455390582262-044c732e152e", tag: "Kebutuhan kantor" },
-  { id: 9, name: "Kalender Meja", category: "Kalender", desc: "Kalender custom untuk kebutuhan promosi dan merchandise perusahaan.", image: "photo-1506784983877-45594", tag: "Corporate" },
-  { id: 10, name: "Kalender Dinding", category: "Kalender", desc: "Kalender custom untuk branding, hadiah, dan kebutuhan kantor.", image: "photo-1506784983877-45594", tag: "Corporate" },
+  { id: 9, name: "Kalender Meja", category: "Kalender", desc: "Kalender custom untuk kebutuhan promosi dan merchandise perusahaan.", image: "photo-1455390582262-044c732e152e", tag: "Corporate" },
+  { id: 10, name: "Kalender Dinding", category: "Kalender", desc: "Kalender custom untuk branding, hadiah, dan kebutuhan kantor.", image: "photo-1455390582262-044c732e152e", tag: "Corporate" },
   { id: 11, name: "Nota & Formulir", category: "Bisnis", desc: "Cetak nota, formulir, dan kebutuhan administrasi usaha.", image: "photo-1586282391129-76a6df230234", tag: "Operasional bisnis" },
   { id: 12, name: "Merchandise Custom", category: "Merchandise", desc: "Produk promosi dan merchandise untuk event maupun perusahaan.", image: "photo-1513506003901-1e6a229e2d15", tag: "Corporate gift" }
 ];
@@ -152,7 +152,7 @@ export default function Home() {
           <button className="category-tile" onClick={() => chooseCategory("Stiker & Label")} style={{ backgroundImage: "linear-gradient(0deg,rgba(25,29,25,.76),rgba(25,29,25,.04)),url('" + photo("photo-1634942536790-2531a9b7c3b4") + "')" }}><span>02</span><strong>Stiker & label</strong><small>Lihat produk <ArrowUpRight size={13} /></small></button>
           <button className="category-tile" onClick={() => chooseCategory("Kemasan")} style={{ backgroundImage: "linear-gradient(0deg,rgba(25,29,25,.76),rgba(25,29,25,.04)),url('" + photo("photo-1607082349566-187342175e2f") + "')" }}><span>03</span><strong>Kemasan</strong><small>Lihat produk <ArrowUpRight size={13} /></small></button>
           <button className="category-tile" onClick={() => chooseCategory("Bisnis")} style={{ backgroundImage: "linear-gradient(0deg,rgba(25,29,25,.76),rgba(25,29,25,.04)),url('" + photo("photo-1544816155-12df9643f363") + "')" }}><span>04</span><strong>Bisnis & kantor</strong><small>Lihat produk <ArrowUpRight size={13} /></small></button>
-          <button className="category-tile" onClick={() => chooseCategory("Kalender")} style={{ backgroundImage: "linear-gradient(0deg,rgba(25,29,25,.76),rgba(25,29,25,.04)),url('" + photo("photo-1506784983877-45594") + "')" }}><span>05</span><strong>Kalender</strong><small>Lihat produk <ArrowUpRight size={13} /></small></button>
+          <button className="category-tile" onClick={() => chooseCategory("Kalender")} style={{ backgroundImage: "linear-gradient(0deg,rgba(25,29,25,.76),rgba(25,29,25,.04)),url('" + photo("photo-1455390582262-044c732e152e") + "')" }}><span>05</span><strong>Kalender</strong><small>Lihat produk <ArrowUpRight size={13} /></small></button>
         </div>
       </section>
 
