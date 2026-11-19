@@ -20,13 +20,22 @@ export default function WebsiteFunnel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [period, setPeriod] = useState("30");
+  const [readKey, setReadKey] = useState("");
+  const [hasReadKey, setHasReadKey] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
+
+  useEffect(() => {
+    const saved = window.sessionStorage.getItem("smp_saleshub_funnel_read_key") || "";
+    if (saved) { setReadKey(saved); setHasReadKey(true); }
+  }, []);
 
   async function load() {
+    if (!readKey) { setLoading(false); return; }
     setLoading(true);
     setError("");
     try {
       const from = new Date(Date.now() - Number(period) * 86400000).toISOString();
-      const response = await fetch("/api/funnel-events?limit=1000&from=" + encodeURIComponent(from), { cache: "no-store" });
+      const response = await fetch("/api/funnel-events?limit=1000&from=" + encodeURIComponent(from), { cache: "no-store", headers: { Authorization: "Bearer " + readKey } });
       if (!response.ok) throw new Error(response.status === 503 ? "API SalesHub belum dikonfigurasi." : "Gagal mengambil data funnel.");
       const data = await response.json();
       setEvents(Array.isArray(data.events) ? data.events : []);
@@ -37,7 +46,19 @@ export default function WebsiteFunnel() {
     }
   }
 
-  useEffect(() => { load(); }, [period]);
+  useEffect(() => { if (hasReadKey) load(); }, [period, hasReadKey, readKey]);
+
+  function connectReadKey(event) {
+    event.preventDefault();
+    const value = keyInput.trim();
+    if (!value) return;
+    window.sessionStorage.setItem("smp_saleshub_funnel_read_key", value);
+    setReadKey(value); setHasReadKey(true); setKeyInput("");
+  }
+  function disconnectReadKey() {
+    window.sessionStorage.removeItem("smp_saleshub_funnel_read_key");
+    setReadKey(""); setHasReadKey(false); setEvents([]);
+  }
 
   const metrics = useMemo(() => {
     const count = (name) => events.filter((event) => event.event_name === name).length;
@@ -78,7 +99,9 @@ export default function WebsiteFunnel() {
         <div className="wf-actions"><select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="7">7 hari</option><option value="30">30 hari</option><option value="90">90 hari</option></select><button className="btn-secondary" onClick={load} disabled={loading}><RefreshCw size={15}/> Refresh</button><button className="btn-secondary" onClick={exportCsv} disabled={!events.length}><ArrowDownToLine size={15}/> CSV</button></div>
       </div>
 
+      {!hasReadKey ? <form className="wf-error" onSubmit={connectReadKey}><label htmlFor="wf-read-key">Masukkan kunci akses dashboard funnel</label><div className="wf-actions"><input id="wf-read-key" type="password" autoComplete="current-password" value={keyInput} onChange={(event) => setKeyInput(event.target.value)} placeholder="Kunci akses dashboard" required /><button className="btn-secondary" type="submit">Buka data funnel</button></div><small>Kunci hanya disimpan di session browser ini.</small></form> : <div className="wf-actions"><button className="btn-secondary" onClick={disconnectReadKey}>Kunci dashboard</button></div>}
       {error && <div className="wf-error">{error} Pastikan migration D1 dan environment variable sudah dipasang.</div>}
+      {hasReadKey ? <>
       <div className="wf-metrics">
         <article><span><Activity size={15}/> Total event</span><b>{loading ? "…" : metrics.total.toLocaleString("id-ID")}</b><small>Seluruh interaksi yang terekam</small></article>
         <article><span><Users size={15}/> Sesi teridentifikasi</span><b>{loading ? "…" : metrics.sessions.toLocaleString("id-ID")}</b><small>Session ID yang tersedia</small></article>
@@ -108,6 +131,7 @@ export default function WebsiteFunnel() {
         </tbody></table></div>
       </div>
       <p className="wf-disclaimer">Catatan pengukuran: whatsapp_click = klik tombol WhatsApp, bukan pesan terkirim. Add to cart dan checkout adalah aktivitas website. Jangan menghitung event ini sebagai lead atau omzet tanpa verifikasi percakapan dan transaksi.</p>
+      </> : null}
     </section>
   );
 }
