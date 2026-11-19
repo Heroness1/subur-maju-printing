@@ -74,3 +74,8 @@ The SalesHub dashboard uses the Next.js API proxy to sync prospect and
 quotation data to D1, with localStorage as a cache/fallback. The Website
 Funnel view reads event data from the authenticated `/api/funnel-events`
 proxy. It does not turn website events into prospect records.
+
+
+### Funnel dashboard read access
+
+Set `SALESHUB_FUNNEL_READ_KEY` as a strong random secret in the SalesHub Vercel project. The Website funnel screen asks an authorized operator for this key and stores it only in the current browser session. The `/api/funnel-events` reporting proxy rejects requests without the key. Do not reuse the website intake secret or the Cloudflare Worker API key.
