@@ -1,4 +1,8 @@
 -- Migration 003: privacy-conscious website funnel event storage.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 -- Events are NOT sales leads. A whatsapp_click records intent only, not a
 -- confirmed conversation. Actual leads must be created/qualified separately.
 CREATE TABLE IF NOT EXISTS funnel_events (
