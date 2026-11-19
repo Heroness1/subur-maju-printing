@@ -9,6 +9,7 @@ import {
   TrendingUp, Users, X
 } from "lucide-react";
 import "./sales-hub.css";
+import WebsiteFunnel from "./WebsiteFunnel";
 
 const STORAGE_KEY = "smp-sales-hub-v1";
 const PRICE_DEFAULT = 27500;
@@ -20,7 +21,7 @@ const SALES_COMMISSION_RATE = 0.25;
 const STATUSES = ["New", "Qualified", "Draft ready", "Contacted", "Interested", "Negotiation", "Won", "Lost", "Opt-out"];
 const NAV = [
   ["Overview", LayoutDashboard], ["Pencarian perusahaan", Search], ["Database prospek", Building2], ["Pipeline penjualan", Target],
-  ["Studio email", Mail], ["Tindak lanjut", CalendarClock], ["Penawaran harga", FileText], ["Keuangan", CircleDollarSign]
+  ["Studio email", Mail], ["Tindak lanjut", CalendarClock], ["Penawaran harga", FileText], ["Website funnel", Globe], ["Keuangan", CircleDollarSign]
 ];
 
 const starter = [];
@@ -618,6 +619,7 @@ export default function SalesHubPage() {
 
         <div className="hub-content">
           {active === "Overview" && <Overview leads={leads} totalPipeline={totalPipeline} wonRevenue={wonRevenue} interested={interested} followups={followups} onAdd={() => {setEditing(null);setShowForm(true);}} onNavigate={setActive} onEmail={openEmail} />}
+          {active === "Website funnel" && <WebsiteFunnel />}
           {active === "Pencarian perusahaan" && <CompanyFinder industry={finderIndustry} setIndustry={setFinderIndustry} area={finderArea} setArea={setFinderArea} onAdd={(industry, area, research={}) => {setEditing({company:"",industry,area,qty:1000,price:PRICE_DEFAULT,status:"New",...research});setShowForm(true);}} />}
           {active === "Database prospek" && <section className="hub-page">
             <PageHeading eyebrow="DATABASE CALON PELANGGAN" title="Database prospek" description="Kelola data perusahaan target, narahubung, sumber informasi, dan potensi kebutuhan kalender meja." action={<button className="btn-primary" onClick={() => {setEditing(null);setShowForm(true);}}><Plus size={16}/> Tambah prospek</button>}/>
