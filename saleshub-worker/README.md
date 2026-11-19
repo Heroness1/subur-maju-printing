@@ -3,56 +3,74 @@
 Backend storage for Subur Maju Printing SalesHub. The Vercel frontend
 cannot bind D1 directly, so this Worker is the API layer in front of D1.
 
-**What this build is:** Worker + D1 schema + prospects API only.
-**What it is NOT yet:** the Vercel frontend is NOT rewired to this API
-(it still uses browser localStorage), no data has been imported, and
-no email is sent from here. Those are separate, explicitly approved steps.
+## API surface
 
-## Deploy (needs a Cloudflare account; no token goes in chat)
+- `GET /api/health` — no auth, health response.
+- `GET/POST /api/prospects` — list/create prospects (Bearer `SALESHUB_API_KEY`).
+- `GET/PATCH/DELETE /api/prospects/:id` — prospect CRUD.
+- `GET/POST /api/quotations` — list/create quotations.
+- `GET/PATCH/DELETE /api/quotations/:id` — quotation CRUD.
+- `POST /api/intake/funnel-events` — server-to-server website event intake (Bearer `SALESHUB_INTAKE_API_KEY`).
+- `GET /api/funnel-events?from=&limit=` — internal reporting (Bearer `SALESHUB_API_KEY`).
+
+Funnel events are behavioral telemetry, not sales leads. In particular,
+`whatsapp_click` is a click/open intent and does not prove a WhatsApp
+conversation occurred. Only create or qualify a sales lead after the actual
+customer conversation is confirmed.
+
+## Database setup / migration
+
+For a fresh database, configure the D1 `database_id` in `wrangler.toml`
+and execute `schema.sql`.
+
+For an existing database, back it up first and run only the unapplied
+migration. Funnel event storage is migration 003:
 
 ```bash
-cd saleshub-worker
-npx wrangler login
-npx wrangler d1 create saleshub-db
-# Copy the database_id it prints into wrangler.toml, then:
-npx wrangler d1 execute saleshub-db --remote --file=./schema.sql
+npx wrangler d1 export saleshub-db --remote --output backup-before-funnel.sql
+npx wrangler d1 execute saleshub-db --remote --file=./migrations/003_funnel_events.sql
+npx wrangler d1 execute saleshub-db --remote --command "SELECT name FROM sqlite_master WHERE type='table' AND name='funnel_events';"
+```
+
+Do not re-run migrations 001 or 002 if they are already applied. The
+migration 003 statement is additive and does not alter existing prospects
+or quotations.
+
+## Secrets and deployment
+
+Set two separate Worker secrets. Never commit either value:
+
+```bash
 npx wrangler secret put SALESHUB_API_KEY
-# Type a long random key when prompted. Keep it private.
+npx wrangler secret put SALESHUB_INTAKE_API_KEY
 npx wrangler deploy
-# Note the *.workers.dev URL it prints.
-npx wrangler dev   # local dev, with --local for a local D1 copy
 ```
 
-## Test it
+`SALESHUB_API_KEY` is for the SalesHub admin proxy. The separate
+`SALESHUB_INTAKE_API_KEY` is used only by the SalesHub server-side intake
+proxy. The marketing website must never receive either Worker secret.
 
-```bash
-curl https://saleshub-api.<your-subdomain>.workers.dev/api/health
-# {"ok":true}
+## Vercel environment variables
 
-curl -H "Authorization: Bearer <SALESHUB_API_KEY>" \
-  https://saleshub-api.<your-subdomain>.workers.dev/api/prospects
-# {"prospects":[]}
-```
+On the SalesHub Vercel project, configure:
 
-## Next steps (separate approvals)
+- `NEXT_PUBLIC_SALESHUB_API_URL` — deployed Worker URL.
+- `SALESHUB_API_KEY` — same value as the Worker admin secret.
+- `SALESHUB_INTAKE_API_KEY` — same value as the Worker intake secret.
+- `SITE_FUNNEL_SHARED_SECRET` — a separate long random secret shared only with the marketing website's server-side proxy.
 
-1. In Vercel, set `NEXT_PUBLIC_SALESHUB_API_URL` to the Worker URL
-   and `SALESHUB_API_KEY` (server-side only, never `NEXT_PUBLIC_` for
-   the key) — then rewire `app/sales-hub/page.jsx` from localStorage
-   to this API. That change touches the live dashboard, so it needs
-   its own review before deploy.
-2. Import the 20 already-researched leads (Batch 1 + Pilot) as the
-   first seed data, with Ace Hardware flagged Manual Review Required
-   (stale Kawan Lama identity — see research notes).
-3. Email sending stays separate: a draft is never sent without Angga
-   approving the recipient list and the email content first.
+On the marketing website's Vercel project, configure:
 
-## API summary
+- `SALESHUB_FUNNEL_INGEST_URL` — SalesHub Vercel URL plus `/api/intake/funnel-events`.
+- `SALESHUB_FUNNEL_INGEST_KEY` — same value as `SITE_FUNNEL_SHARED_SECRET`.
 
-- `GET /api/health` — no auth, `{ ok: true }`
-- `GET /api/prospects?stage=&limit=` — Bearer auth, list by score desc
-- `POST /api/prospects` — Bearer auth, `company` required, `stage`
-  must be New / Qualified / Draft ready / Contacted / Interested /
-  Negotiation / Won, `score` 0–100
-- `PATCH /api/prospects/:id` — Bearer auth, partial update
-- `DELETE /api/prospects/:id` — Bearer auth
+After environment changes, redeploy both Vercel projects. The website-side
+server proxy still needs to be added/configured in the marketing website
+repository; do not send a secret from browser JavaScript.
+
+## Frontend persistence
+
+The SalesHub dashboard uses the Next.js API proxy to sync prospect and
+quotation data to D1, with localStorage as a cache/fallback. The Website
+Funnel view reads event data from the authenticated `/api/funnel-events`
+proxy. It does not turn website events into prospect records.
