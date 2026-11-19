@@ -81,5 +81,38 @@ CREATE TABLE IF NOT EXISTS quotation_items (
   line_total REAL NOT NULL DEFAULT 0
 );
 
+
+-- Website funnel events are behavioral telemetry, not verified sales leads.
+CREATE TABLE IF NOT EXISTS funnel_events (
+  id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL UNIQUE,
+  event_name TEXT NOT NULL CHECK (event_name IN (
+    'whatsapp_click','category_selected','product_selected','add_to_cart',
+    'begin_checkout','order_details_generated','order_request_prepared'
+  )),
+  session_id TEXT,
+  occurred_at TEXT NOT NULL,
+  source TEXT,
+  medium TEXT,
+  campaign TEXT,
+  content TEXT,
+  term TEXT,
+  gclid TEXT,
+  gbraid TEXT,
+  wbraid TEXT,
+  landing_page TEXT,
+  page_location TEXT,
+  referrer TEXT,
+  product TEXT,
+  category TEXT,
+  quantity INTEGER,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_funnel_events_name_date ON funnel_events(event_name, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_funnel_events_campaign ON funnel_events(campaign, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_funnel_events_session ON funnel_events(session_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_funnel_events_landing ON funnel_events(landing_page, occurred_at);
+
 CREATE INDEX IF NOT EXISTS idx_quotations_prospect ON quotations (prospect_id);
 CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items (quotation_id);
