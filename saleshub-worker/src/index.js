@@ -301,7 +301,7 @@ async function handleFunnelIntake(request, env) {
   const timezone = safeText(visitor.timezone, 80);
   const userAgent = safeText(visitor.user_agent, 500);
   const ua = (userAgent || '').toLowerCase();
-  const botMatch = ua.match(/googlebot|bingbot|yandexbot|baiduspider|duckduckbot|facebookexternalhit|twitterbot|linkedinbot|slackbot|crawler|spider|headlesschrome|phantomjs|selenium|playwright|puppeteer|curl\\/|wget\\/|python-requests|httpclient|go-http-client/);
+  const botMatch = ua.match(/googlebot|bingbot|yandexbot|baiduspider|duckduckbot|facebookexternalhit|twitterbot|linkedinbot|slackbot|crawler|spider|headlesschrome|phantomjs|selenium|playwright|puppeteer|curl\/|wget\/|python-requests|httpclient|go-http-client/);
   const botStatus = botMatch ? 'bot' : userAgent ? 'human_signal' : 'unknown';
   const botReason = botMatch ? 'User-agent cocok dengan pola crawler/automation: ' + botMatch[0]
     : userAgent ? 'Browser user-agent; belum ada sinyal bot eksplisit' : 'User-agent tidak tersedia';
