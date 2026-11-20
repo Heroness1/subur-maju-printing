@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { RefreshCw, PlusCircle, TrendingUp, ShoppingBag, Wallet } from "lucide-react";
 
 const money = value => new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(Number(value)||0);
-const spendInitial = { spend_date:new Date().toISOString().slice(0,10), platform:"Google Ads", campaign:"", spend:"", clicks:"0", impressions:"0", notes:"" };
+const spendInitial = { spend_date:new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10), platform:"Google Ads", campaign:"", spend:"", clicks:"0", impressions:"0", notes:"" };
 const initial = { order_number:"", prospect_id:"", quotation_id:"", revenue:"", cogs:"", shipping_cost:"0", other_cost:"0", source:"", medium:"", campaign:"", gclid:"", notes:"" };
 
 export default function OrdersRevenue() {
