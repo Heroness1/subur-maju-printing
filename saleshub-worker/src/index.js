@@ -340,6 +340,7 @@ async function handleOrders(request, env, url) {
           input.revenue, input.cogs ?? 0, input.shipping_cost ?? 0, input.other_cost ?? 0,
           safeText(input.source,200), safeText(input.medium,200), safeText(input.campaign,300), safeText(input.gclid,500),
           safeText(input.gbraid,500), safeText(input.wbraid,500), safeText(input.session_id,120), safeText(input.notes,2000)).run();
+      await env.DB.prepare("UPDATE prospects SET stage = 'Won' WHERE id = ?").bind(input.prospect_id).run();
       const order = await env.DB.prepare('SELECT * FROM sales_orders WHERE id = ?').bind(id).first();
       return jsonResponse(request, env, { order: {...order, gross_profit: Number(order.revenue)-Number(order.cogs)-Number(order.shipping_cost)-Number(order.other_cost)} }, 201);
     }
