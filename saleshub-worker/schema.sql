@@ -107,8 +107,19 @@ CREATE TABLE IF NOT EXISTS funnel_events (
   category TEXT,
   quantity INTEGER,
   metadata_json TEXT,
+  ip_address TEXT,
+  country TEXT,
+  city TEXT,
+  region TEXT,
+  timezone TEXT,
+  user_agent TEXT,
+  bot_status TEXT NOT NULL DEFAULT 'unknown',
+  bot_reason TEXT,
+  device_type TEXT NOT NULL DEFAULT 'unknown',
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+CREATE INDEX IF NOT EXISTS idx_funnel_events_geo ON funnel_events(country, city, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_funnel_events_bot ON funnel_events(bot_status, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_funnel_events_name_date ON funnel_events(event_name, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_funnel_events_campaign ON funnel_events(campaign, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_funnel_events_session ON funnel_events(session_id, occurred_at);
