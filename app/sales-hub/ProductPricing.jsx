@@ -88,7 +88,7 @@ export default function ProductPricing() {
         method: editingId ? "PATCH" : "POST", body: JSON.stringify(payload)
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.details?.join(", ") || (data.error === "server_error" ? "SKU mungkin sudah digunakan atau server mengalami masalah." : "Gagal menyimpan produk."));
+      if (!response.ok) throw new Error(data.details?.join(", ") || (data.error === "duplicate_sku" ? "SKU sudah digunakan. Gunakan kode SKU yang berbeda." : data.error === "server_error" ? "Server mengalami masalah saat menyimpan produk." : "Gagal menyimpan produk."));
       setNotice(editingId ? "Perubahan produk berhasil disimpan." : "Produk berhasil ditambahkan.");
       setEditingId(""); setForm(EMPTY);
       await loadProducts();
@@ -120,6 +120,7 @@ export default function ProductPricing() {
   const visible = useMemo(() => products.filter(p => filter === "all" || (filter === "active" ? p.active : !p.active)), [products, filter]);
   const totals = useMemo(() => ({
     count: products.filter(p => p.active).length,
+    total: products.length,
     value: products.filter(p => p.active).reduce((sum,p)=>sum+Number(p.selling_price||0),0),
     averageMargin: products.filter(p=>p.active && Number(p.selling_price)>0).length
       ? products.filter(p=>p.active && Number(p.selling_price)>0).reduce((sum,p)=>sum+Number(p.gross_margin_percent||0),0) / products.filter(p=>p.active && Number(p.selling_price)>0).length : 0
@@ -153,7 +154,7 @@ export default function ProductPricing() {
       <div className="pp-metrics">
         <article><span>Produk aktif</span><b>{totals.count}</b></article>
         <article><span>Rata-rata gross margin</span><b>{totals.averageMargin.toFixed(1)}%</b></article>
-        <article><span>Jumlah varian / SKU aktif</span><b>{totals.count}</b></article>
+        <article><span>Total SKU tersimpan</span><b>{totals.total}</b></article>
       </div>
 
       <div className="pp-layout">
