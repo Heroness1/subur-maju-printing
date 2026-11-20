@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, ArrowDownToLine, Globe, RefreshCw, Users, MousePointerClick, ShoppingCart, MessageCircle } from "lucide-react";
+import { Activity, ArrowDownToLine, Globe, RefreshCw, Users, MousePointerClick, ShoppingCart, MessageCircle, MapPin } from "lucide-react";
+import GeoIntelligence from "./GeoIntelligence";
 import "./website-funnel.css";
 
 const LABELS = {
@@ -24,6 +25,7 @@ export default function WebsiteFunnel() {
   const [hasReadKey, setHasReadKey] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [verifyingKey, setVerifyingKey] = useState(false);
+  const [activeTab, setActiveTab] = useState("funnel");
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("smp_saleshub_funnel_read_key") || "";
@@ -125,10 +127,15 @@ export default function WebsiteFunnel() {
         <div><span className="page-eyebrow">AKUISISI & KONVERSI WEBSITE</span><h1>Website funnel</h1><p>Pantau aktivitas pengunjung dari sumber traffic sampai intent pemesanan. Data ini terpisah dari lead penjualan yang sudah terkonfirmasi.</p></div>
         <div className="wf-actions"><select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="7">7 hari</option><option value="30">30 hari</option><option value="90">90 hari</option></select><button className="btn-secondary" onClick={load} disabled={loading}><RefreshCw size={15}/> Refresh</button><button className="btn-secondary" onClick={exportCsv} disabled={!events.length}><ArrowDownToLine size={15}/> CSV</button></div>
       </div>
+      <div className="wf-tabs" role="tablist" aria-label="Website funnel views">
+        <button type="button" role="tab" aria-selected={activeTab === "funnel"} className={activeTab === "funnel" ? "active" : ""} onClick={() => setActiveTab("funnel")}><Activity size={15}/> Funnel overview</button>
+        <button type="button" role="tab" aria-selected={activeTab === "geo"} className={activeTab === "geo" ? "active" : ""} onClick={() => setActiveTab("geo")}><MapPin size={15}/> Geo Intelligence <span className="wf-tab-pill">NEW</span></button>
+      </div>
 
       {!hasReadKey ? <form className="wf-error" onSubmit={connectReadKey}><label htmlFor="wf-read-key">Masukkan kunci akses dashboard funnel</label><div className="wf-actions"><input id="wf-read-key" type="password" autoComplete="current-password" value={keyInput} onChange={(event) => setKeyInput(event.target.value)} placeholder="Kunci akses dashboard" required /><button className="btn-secondary" type="submit" disabled={verifyingKey}>{verifyingKey ? "Memverifikasi…" : "Buka data funnel"}</button></div><small>Kunci hanya disimpan di session browser ini.</small></form> : <div className="wf-actions"><button className="btn-secondary" onClick={disconnectReadKey}>Kunci dashboard</button></div>}
       {error && <div className="wf-error">{error} Pastikan migration D1 dan environment variable sudah dipasang.</div>}
-      {hasReadKey ? <>
+      {hasReadKey && activeTab === "geo" ? <GeoIntelligence onOpenFunnel={() => setActiveTab("funnel")} /> : null}
+      {hasReadKey && activeTab === "funnel" ? <>
       <div className="wf-metrics">
         <article><span><Activity size={15}/> Total event</span><b>{loading ? "…" : metrics.total.toLocaleString("id-ID")}</b><small>Seluruh interaksi yang terekam</small></article>
         <article><span><Users size={15}/> Sesi teridentifikasi</span><b>{loading ? "…" : metrics.sessions.toLocaleString("id-ID")}</b><small>Session ID yang tersedia</small></article>

@@ -293,20 +293,36 @@ async function handleFunnelIntake(request, env) {
   const quantity = Number.isInteger(input.quantity) && input.quantity >= 0 ? input.quantity : null;
   const metadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
     ? JSON.stringify(input.metadata).slice(0, 2000) : null;
+  const visitor = input.visitor && typeof input.visitor === 'object' && !Array.isArray(input.visitor) ? input.visitor : {};
+  const ipAddress = safeText(visitor.ip_address, 64);
+  const country = safeText(visitor.country, 80);
+  const city = safeText(visitor.city, 120);
+  const region = safeText(visitor.region, 120);
+  const timezone = safeText(visitor.timezone, 80);
+  const userAgent = safeText(visitor.user_agent, 500);
+  const ua = (userAgent || '').toLowerCase();
+  const botMatch = ua.match(/googlebot|bingbot|yandexbot|baiduspider|duckduckbot|facebookexternalhit|twitterbot|linkedinbot|slackbot|crawler|spider|headlesschrome|phantomjs|selenium|playwright|puppeteer|curl\/|wget\/|python-requests|httpclient|go-http-client/);
+  const botStatus = botMatch ? 'bot' : userAgent ? 'human_signal' : 'unknown';
+  const botReason = botMatch ? 'User-agent cocok dengan pola crawler/automation: ' + botMatch[0]
+    : userAgent ? 'Browser user-agent; belum ada sinyal bot eksplisit' : 'User-agent tidak tersedia';
+  const deviceType = /mobile|android|iphone|ipod/i.test(userAgent || '') ? 'mobile'
+    : /ipad|tablet/i.test(userAgent || '') ? 'tablet' : userAgent ? 'desktop' : 'unknown';
   const id = 'fe-' + eventId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
   try {
     const result = await env.DB.prepare(
       `INSERT OR IGNORE INTO funnel_events
        (id,event_id,event_name,session_id,occurred_at,source,medium,campaign,content,term,
-        gclid,gbraid,wbraid,landing_page,page_location,referrer,product,category,quantity,metadata_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        gclid,gbraid,wbraid,landing_page,page_location,referrer,product,category,quantity,metadata_json,
+        ip_address,country,city,region,timezone,user_agent,bot_status,bot_reason,device_type)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(
       id, eventId, input.event_name, safeText(input.session_id, 120), occurredAt,
       safeText(input.source, 200), safeText(input.medium, 200), safeText(input.campaign, 300),
       safeText(input.content, 300), safeText(input.term, 300), safeText(input.gclid, 500),
       safeText(input.gbraid, 500), safeText(input.wbraid, 500), safeText(input.landing_page, 1000),
       safeText(input.page_location, 1000), safeText(input.referrer, 1000),
-      safeText(input.product, 300), safeText(input.category, 200), quantity, metadata
+      safeText(input.product, 300), safeText(input.category, 200), quantity, metadata,
+      ipAddress, country, city, region, timezone, userAgent, botStatus, botReason, deviceType
     ).run();
     return jsonResponse(request, env, { accepted: true, duplicate: result.meta.changes === 0 }, result.meta.changes === 0 ? 200 : 201);
   } catch (err) {

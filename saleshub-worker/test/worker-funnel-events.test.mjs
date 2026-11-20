@@ -49,6 +49,7 @@ const event = {
   landing_page: "/brosur-jakarta-timur",
   page_location: "https://www.suburmajuprinting.com/brosur-jakarta-timur",
   referrer: "https://google.com/",
+  visitor: { ip_address: "203.0.113.10", country: "ID", city: "Jakarta", region: "JK", timezone: "Asia/Jakarta", user_agent: "Mozilla/5.0 Chrome/130.0 Safari/537.36" },
 };
 
 test("intake stores allowed event and deduplicates repeated event_id", async () => {
@@ -63,6 +64,11 @@ test("intake stores allowed event and deduplicates repeated event_id", async () 
   assert.equal(list.status, 200);
   assert.equal(list.json.events.length, 1);
   assert.equal(list.json.events[0].campaign, "printing-jakarta");
+  assert.equal(list.json.events[0].ip_address, "203.0.113.10");
+  assert.equal(list.json.events[0].country, "ID");
+  assert.equal(list.json.events[0].city, "Jakarta");
+  assert.equal(list.json.events[0].bot_status, "human_signal");
+  assert.equal(list.json.events[0].device_type, "desktop");
 });
 
 test("intake requires its separate secret and rejects unknown event names", async () => {

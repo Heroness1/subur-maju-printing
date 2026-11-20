@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ArrowDownToLine, ArrowUpRight, Bell, Building2, CalendarClock,
   Check, ChevronDown, CircleDollarSign, ClipboardList, Copy, Download,
-  FileText, Filter, LayoutDashboard, Mail, MapPin, Menu, MessageSquare, Linkedin, Globe,
+  FileText, Filter, LayoutDashboard, Mail, Menu, MessageSquare, Linkedin, Globe,
   Plus, Printer, Search, Send, Settings2, ShieldCheck, Target, Trash2,
   TrendingUp, Users, X
 } from "lucide-react";
