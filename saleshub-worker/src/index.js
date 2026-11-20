@@ -252,6 +252,62 @@ async function handleQuotations(request, env, url) {
 }
 
 
+
+const ORDER_STATUSES = ['confirmed', 'in_production', 'completed', 'cancelled'];
+function validateOrder(input) {
+  const errors = [];
+  if (!input.order_number || typeof input.order_number !== 'string') errors.push('order_number is required');
+  if (!input.prospect_id || typeof input.prospect_id !== 'string') errors.push('prospect_id is required');
+  if (typeof input.revenue !== 'number' || !Number.isFinite(input.revenue) || input.revenue < 0) errors.push('revenue must be a non-negative number');
+  for (const key of ['cogs', 'shipping_cost', 'other_cost']) if (input[key] !== undefined && (typeof input[key] !== 'number' || !Number.isFinite(input[key]) || input[key] < 0)) errors.push(key + ' must be a non-negative number');
+  if (input.status !== undefined && !ORDER_STATUSES.includes(input.status)) errors.push('invalid order status');
+  for (const key of ['quotation_id','confirmed_at','source','medium','campaign','gclid','gbraid','wbraid','session_id','notes']) if (input[key] !== undefined && input[key] !== null && typeof input[key] !== 'string') errors.push(key + ' must be a string');
+  return errors;
+}
+async function handleOrders(request, env, url) {
+  try {
+    if (request.method === 'GET') {
+      const limitRaw = parseInt(url.searchParams.get('limit') || '200', 10);
+      const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 1000) : 200;
+      const from = url.searchParams.get('from'), to = url.searchParams.get('to'), status = url.searchParams.get('status');
+      let query = 'SELECT * FROM sales_orders WHERE 1=1'; const params = [];
+      if (from && Number.isFinite(Date.parse(from))) { query += ' AND confirmed_at >= ?'; params.push(from); }
+      if (to && Number.isFinite(Date.parse(to))) { query += ' AND confirmed_at <= ?'; params.push(to); }
+      if (status && ORDER_STATUSES.includes(status)) { query += ' AND status = ?'; params.push(status); }
+      query += ' ORDER BY confirmed_at DESC LIMIT ?'; params.push(limit);
+      const { results } = await env.DB.prepare(query).bind(...params).all();
+      return jsonResponse(request, env, { orders: results.map(row => ({...row, gross_profit: Number(row.revenue)-Number(row.cogs)-Number(row.shipping_cost)-Number(row.other_cost)})) });
+    }
+    if (request.method === 'POST') {
+      const input = await request.json().catch(() => null);
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return jsonResponse(request, env, { error: 'invalid_json' }, 400);
+      const errors = validateOrder(input); if (errors.length) return jsonResponse(request, env, { error: 'validation', details: errors }, 400);
+      const prospect = await env.DB.prepare('SELECT id FROM prospects WHERE id = ?').bind(input.prospect_id).first();
+      if (!prospect) return jsonResponse(request, env, { error: 'prospect_not_found' }, 404);
+      if (input.quotation_id) {
+        const quotation = await env.DB.prepare('SELECT id, prospect_id, status FROM quotations WHERE id = ?').bind(input.quotation_id).first();
+        if (!quotation) return jsonResponse(request, env, { error: 'quotation_not_found' }, 404);
+        if (quotation.prospect_id !== input.prospect_id) return jsonResponse(request, env, { error: 'quotation_prospect_mismatch' }, 400);
+        if (quotation.status !== 'Accepted') return jsonResponse(request, env, { error: 'quotation_not_accepted' }, 409);
+      }
+      const duplicate = await env.DB.prepare('SELECT id FROM sales_orders WHERE order_number = ?').bind(input.order_number.trim()).first();
+      if (duplicate) return jsonResponse(request, env, { error: 'duplicate_order_number' }, 409);
+      const id = 'order-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      const confirmedAt = input.confirmed_at && Number.isFinite(Date.parse(input.confirmed_at)) ? input.confirmed_at : new Date().toISOString();
+      await env.DB.prepare(`INSERT INTO sales_orders
+        (id, order_number, prospect_id, quotation_id, status, confirmed_at, revenue, cogs, shipping_cost, other_cost, source, medium, campaign, gclid, gbraid, wbraid, session_id, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(id, input.order_number.trim(), input.prospect_id, input.quotation_id || null, input.status || 'confirmed', confirmedAt,
+          input.revenue, input.cogs ?? 0, input.shipping_cost ?? 0, input.other_cost ?? 0,
+          safeText(input.source,200), safeText(input.medium,200), safeText(input.campaign,300), safeText(input.gclid,500),
+          safeText(input.gbraid,500), safeText(input.wbraid,500), safeText(input.session_id,120), safeText(input.notes,2000)).run();
+      const order = await env.DB.prepare('SELECT * FROM sales_orders WHERE id = ?').bind(id).first();
+      return jsonResponse(request, env, { order: {...order, gross_profit: Number(order.revenue)-Number(order.cogs)-Number(order.shipping_cost)-Number(order.other_cost)} }, 201);
+    }
+    return jsonResponse(request, env, { error: 'method_not_allowed' }, 405);
+  } catch (err) { return jsonResponse(request, env, { error: 'server_error' }, 500); }
+}
+
 const FUNNEL_EVENTS = new Set([
   'whatsapp_click', 'category_selected', 'product_selected', 'add_to_cart',
   'begin_checkout', 'order_details_generated', 'order_request_prepared',
@@ -465,7 +521,7 @@ export default {
       return handleFunnelIntake(request, env);
     }
 
-    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations') && !url.pathname.startsWith('/api/funnel-events')) {
+    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations') && !url.pathname.startsWith('/api/funnel-events') && url.pathname !== '/api/orders') {
       return jsonResponse(request, env, { error: 'not_found' }, 404);
     }
 
@@ -475,6 +531,10 @@ export default {
 
     if (url.pathname === '/api/funnel-events') {
       return handleFunnelEvents(request, env, url);
+    }
+
+    if (url.pathname === '/api/orders') {
+      return handleOrders(request, env, url);
     }
 
     if (url.pathname.startsWith('/api/quotations')) {
