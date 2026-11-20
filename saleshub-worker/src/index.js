@@ -264,6 +264,45 @@ function validateOrder(input) {
   for (const key of ['quotation_id','confirmed_at','source','medium','campaign','gclid','gbraid','wbraid','session_id','notes']) if (input[key] !== undefined && input[key] !== null && typeof input[key] !== 'string') errors.push(key + ' must be a string');
   return errors;
 }
+
+async function handleCampaignSpend(request, env, url) {
+  try {
+    if (request.method === 'GET') {
+      const from = url.searchParams.get('from'), to = url.searchParams.get('to');
+      let query = 'SELECT * FROM campaign_spend WHERE 1=1'; const params = [];
+      if (from && Number.isFinite(Date.parse(from))) { query += ' AND spend_date >= ?'; params.push(from.slice(0,10)); }
+      if (to && Number.isFinite(Date.parse(to))) { query += ' AND spend_date <= ?'; params.push(to.slice(0,10)); }
+      query += ' ORDER BY spend_date DESC, platform ASC, campaign ASC LIMIT 1000';
+      const { results } = await env.DB.prepare(query).bind(...params).all();
+      return jsonResponse(request, env, { spends: results });
+    }
+    if (request.method === 'POST') {
+      const input = await request.json().catch(() => null);
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return jsonResponse(request, env, { error: 'invalid_json' }, 400);
+      const errors = [];
+      if (!input.spend_date || !/^\\d{4}-\\d{2}-\\d{2}$/.test(input.spend_date) || !Number.isFinite(Date.parse(input.spend_date))) errors.push('spend_date must use YYYY-MM-DD');
+      if (!input.platform || typeof input.platform !== 'string') errors.push('platform is required');
+      if (!input.campaign || typeof input.campaign !== 'string') errors.push('campaign is required');
+      if (typeof input.spend !== 'number' || !Number.isFinite(input.spend) || input.spend < 0) errors.push('spend must be a non-negative number');
+      for (const key of ['clicks','impressions']) if (input[key] !== undefined && (!Number.isInteger(input[key]) || input[key] < 0)) errors.push(key + ' must be a non-negative integer');
+      if (input.notes !== undefined && input.notes !== null && typeof input.notes !== 'string') errors.push('notes must be a string');
+      if (errors.length) return jsonResponse(request, env, { error: 'validation', details: errors }, 400);
+      const id = 'spend-' + input.spend_date + '-' + Math.random().toString(36).slice(2,10);
+      await env.DB.prepare(`INSERT INTO campaign_spend (id, spend_date, platform, campaign, spend, clicks, impressions, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(spend_date, platform, campaign) DO UPDATE SET
+          spend = excluded.spend, clicks = excluded.clicks, impressions = excluded.impressions,
+          notes = excluded.notes, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`)
+        .bind(id, input.spend_date, safeText(input.platform,80), safeText(input.campaign,300), input.spend,
+          input.clicks ?? 0, input.impressions ?? 0, safeText(input.notes,1000)).run();
+      const row = await env.DB.prepare('SELECT * FROM campaign_spend WHERE spend_date = ? AND platform = ? AND campaign = ?')
+        .bind(input.spend_date, safeText(input.platform,80), safeText(input.campaign,300)).first();
+      return jsonResponse(request, env, { spend: row }, 201);
+    }
+    return jsonResponse(request, env, { error: 'method_not_allowed' }, 405);
+  } catch (err) { return jsonResponse(request, env, { error: 'server_error' }, 500); }
+}
+
 async function handleOrders(request, env, url) {
   try {
     if (request.method === 'GET') {
@@ -521,7 +560,7 @@ export default {
       return handleFunnelIntake(request, env);
     }
 
-    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations') && !url.pathname.startsWith('/api/funnel-events') && url.pathname !== '/api/orders') {
+    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations') && !url.pathname.startsWith('/api/funnel-events') && url.pathname !== '/api/orders' && url.pathname !== '/api/campaign-spend') {
       return jsonResponse(request, env, { error: 'not_found' }, 404);
     }
 
@@ -535,6 +574,10 @@ export default {
 
     if (url.pathname === '/api/orders') {
       return handleOrders(request, env, url);
+    }
+
+    if (url.pathname === '/api/campaign-spend') {
+      return handleCampaignSpend(request, env, url);
     }
 
     if (url.pathname.startsWith('/api/quotations')) {
