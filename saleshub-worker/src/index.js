@@ -251,6 +251,90 @@ async function handleQuotations(request, env, url) {
   }
 }
 
+
+const FUNNEL_EVENTS = new Set([
+  'whatsapp_click', 'category_selected', 'product_selected', 'add_to_cart',
+  'begin_checkout', 'order_details_generated', 'order_request_prepared',
+]);
+
+function safeText(value, max = 500) {
+  return typeof value === 'string' ? value.trim().slice(0, max) || null : null;
+}
+
+function matchesSecret(request, secretName, env) {
+  const secret = env[secretName];
+  if (!secret) return false;
+  const header = request.headers.get('Authorization') || '';
+  const supplied = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (supplied.length !== secret.length) return false;
+  let diff = 0;
+  for (let i = 0; i < secret.length; i++) diff |= supplied.charCodeAt(i) ^ secret.charCodeAt(i);
+  return diff === 0;
+}
+
+async function handleFunnelIntake(request, env) {
+  if (request.method !== 'POST') return jsonResponse(request, env, { error: 'method_not_allowed' }, 405);
+  if (!matchesSecret(request, 'SALESHUB_INTAKE_API_KEY', env)) {
+    return jsonResponse(request, env, { error: 'unauthorized' }, 401);
+  }
+  const input = await request.json().catch(() => null);
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return jsonResponse(request, env, { error: 'invalid_json' }, 400);
+  }
+  if (!FUNNEL_EVENTS.has(input.event_name)) {
+    return jsonResponse(request, env, { error: 'invalid_event_name' }, 400);
+  }
+  const eventId = safeText(input.event_id, 120);
+  if (!eventId) return jsonResponse(request, env, { error: 'event_id_required' }, 400);
+  const occurredAt = safeText(input.occurred_at, 40) || new Date().toISOString();
+  if (!Number.isFinite(Date.parse(occurredAt))) {
+    return jsonResponse(request, env, { error: 'invalid_occurred_at' }, 400);
+  }
+  const quantity = Number.isInteger(input.quantity) && input.quantity >= 0 ? input.quantity : null;
+  const metadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
+    ? JSON.stringify(input.metadata).slice(0, 2000) : null;
+  const id = 'fe-' + eventId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+  try {
+    const result = await env.DB.prepare(
+      `INSERT OR IGNORE INTO funnel_events
+       (id,event_id,event_name,session_id,occurred_at,source,medium,campaign,content,term,
+        gclid,gbraid,wbraid,landing_page,page_location,referrer,product,category,quantity,metadata_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      id, eventId, input.event_name, safeText(input.session_id, 120), occurredAt,
+      safeText(input.source, 200), safeText(input.medium, 200), safeText(input.campaign, 300),
+      safeText(input.content, 300), safeText(input.term, 300), safeText(input.gclid, 500),
+      safeText(input.gbraid, 500), safeText(input.wbraid, 500), safeText(input.landing_page, 1000),
+      safeText(input.page_location, 1000), safeText(input.referrer, 1000),
+      safeText(input.product, 300), safeText(input.category, 200), quantity, metadata
+    ).run();
+    return jsonResponse(request, env, { accepted: true, duplicate: result.meta.changes === 0 }, result.meta.changes === 0 ? 200 : 201);
+  } catch (err) {
+    return jsonResponse(request, env, { error: 'server_error' }, 500);
+  }
+}
+
+async function handleFunnelEvents(request, env, url) {
+  if (request.method !== 'GET') return jsonResponse(request, env, { error: 'method_not_allowed' }, 405);
+  const limitRaw = parseInt(url.searchParams.get('limit') || '500', 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 1000) : 500;
+  const from = url.searchParams.get('from');
+  let query = 'SELECT * FROM funnel_events';
+  const params = [];
+  if (from && Number.isFinite(Date.parse(from))) {
+    query += ' WHERE occurred_at >= ?';
+    params.push(from);
+  }
+  query += ' ORDER BY occurred_at DESC LIMIT ?';
+  params.push(limit);
+  try {
+    const { results } = await env.DB.prepare(query).bind(...params).all();
+    return jsonResponse(request, env, { events: results });
+  } catch (err) {
+    return jsonResponse(request, env, { error: 'server_error' }, 500);
+  }
+}
+
 const ALLOWED_FIELDS = [
   'company',
   'website',
@@ -361,12 +445,20 @@ export default {
       return jsonResponse(request, env, { ok: true });
     }
 
-    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations')) {
+    if (url.pathname === '/api/intake/funnel-events') {
+      return handleFunnelIntake(request, env);
+    }
+
+    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations') && !url.pathname.startsWith('/api/funnel-events')) {
       return jsonResponse(request, env, { error: 'not_found' }, 404);
     }
 
     if (!isAuthorized(request, env)) {
       return jsonResponse(request, env, { error: 'unauthorized' }, 401);
+    }
+
+    if (url.pathname === '/api/funnel-events') {
+      return handleFunnelEvents(request, env, url);
     }
 
     if (url.pathname.startsWith('/api/quotations')) {
