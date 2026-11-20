@@ -280,7 +280,8 @@ async function handleCampaignSpend(request, env, url) {
       const input = await request.json().catch(() => null);
       if (!input || typeof input !== 'object' || Array.isArray(input)) return jsonResponse(request, env, { error: 'invalid_json' }, 400);
       const errors = [];
-      if (!input.spend_date || !/^\\d{4}-\\d{2}-\\d{2}$/.test(input.spend_date) || !Number.isFinite(Date.parse(input.spend_date))) errors.push('spend_date must use YYYY-MM-DD');
+      const dateShape = typeof input.spend_date === 'string' && input.spend_date.length === 10 && input.spend_date[4] === '-' && input.spend_date[7] === '-';
+      if (!dateShape || !Number.isFinite(Date.parse(input.spend_date))) errors.push('spend_date must use YYYY-MM-DD');
       if (!input.platform || typeof input.platform !== 'string') errors.push('platform is required');
       if (!input.campaign || typeof input.campaign !== 'string') errors.push('campaign is required');
       if (typeof input.spend !== 'number' || !Number.isFinite(input.spend) || input.spend < 0) errors.push('spend must be a non-negative number');
