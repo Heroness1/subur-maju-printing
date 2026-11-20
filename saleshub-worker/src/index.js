@@ -362,7 +362,7 @@ function productWithMetrics(row) {
 
 function validateProduct(input, partial = false) {
   const errors = [];
-  const textFields = ['sku','product_name','category','variant','unit','notes'];
+  const textFields = ['sku','product_name','category','variant','unit','notes','image_url'];
   for (const key of textFields) {
     if (input[key] !== undefined && input[key] !== null && typeof input[key] !== 'string') errors.push(key + ' must be text');
   }
@@ -381,7 +381,7 @@ async function handlePublicProducts(request, env) {
   if (request.method !== 'GET') return jsonResponse(request, env, { error: 'method_not_allowed' }, 405);
   try {
     const { results } = await env.DB.prepare(
-      'SELECT sku, product_name, category, variant, unit, moq, selling_price, updated_at FROM product_master WHERE active = 1 AND selling_price > 0 ORDER BY category, product_name, variant'
+      'SELECT sku, product_name, category, variant, unit, moq, selling_price, image_url, updated_at FROM product_master WHERE active = 1 AND selling_price > 0 ORDER BY category, product_name, variant'
     ).all();
     return jsonResponse(request, env, { products: results });
   } catch (err) {
@@ -419,12 +419,12 @@ async function handleProductMaster(request, env, url) {
       if (duplicateSku) return jsonResponse(request, env, { error: 'duplicate_sku' }, 409);
       const idNew = 'product-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
       await env.DB.prepare(`INSERT INTO product_master
-        (id,sku,product_name,category,variant,unit,moq,material_cost,print_cost,finishing_cost,labor_cost,other_cost,selling_price,active,notes)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+        (id,sku,product_name,category,variant,unit,moq,material_cost,print_cost,finishing_cost,labor_cost,other_cost,selling_price,active,notes,image_url)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
           idNew,input.sku.trim(),input.product_name.trim(),input.category.trim(),input.variant || null,
           input.unit || 'pcs',Number(input.moq ?? 1),Number(input.material_cost ?? 0),Number(input.print_cost ?? 0),
           Number(input.finishing_cost ?? 0),Number(input.labor_cost ?? 0),Number(input.other_cost ?? 0),
-          Number(input.selling_price ?? 0),input.active === false ? 0 : 1,input.notes || null
+          Number(input.selling_price ?? 0),input.active === false ? 0 : 1,input.notes || null,input.image_url || null
         ).run();
       const row = await env.DB.prepare('SELECT * FROM product_master WHERE id = ?').bind(idNew).first();
       return jsonResponse(request, env, { product: productWithMetrics(row) }, 201);
@@ -440,7 +440,7 @@ async function handleProductMaster(request, env, url) {
         const duplicateSku = await env.DB.prepare('SELECT id FROM product_master WHERE sku = ? AND id != ?').bind(input.sku.trim(), id).first();
         if (duplicateSku) return jsonResponse(request, env, { error: 'duplicate_sku' }, 409);
       }
-      const fields = ['sku','product_name','category','variant','unit','moq','material_cost','print_cost','finishing_cost','labor_cost','other_cost','selling_price','active','notes'];
+      const fields = ['sku','product_name','category','variant','unit','moq','material_cost','print_cost','finishing_cost','labor_cost','other_cost','selling_price','active','notes','image_url'];
       const updates = {};
       for (const key of fields) if (input[key] !== undefined) updates[key] = key === 'active' ? (input[key] ? 1 : 0) : input[key];
       if (!Object.keys(updates).length) return jsonResponse(request, env, { error: 'no_fields_to_update' }, 400);

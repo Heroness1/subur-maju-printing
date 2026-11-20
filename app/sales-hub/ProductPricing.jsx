@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Archive, KeyRound, Package, Plus, RefreshCw, Save, X, History } from "lucide-react";
+import { Archive, KeyRound, Package, Plus, RefreshCw, Save, X, History, Download, Image as ImageIcon } from "lucide-react";
 import "./product-pricing.css";
 
 const EMPTY = {
-  sku: "", product_name: "", category: "Outdoor & Banner", variant: "", unit: "pcs", moq: 1,
+  sku: "", product_name: "", category: "Outdoor & Banner", variant: "", unit: "pcs", moq: 1, image_url: "",
   material_cost: 0, print_cost: 0, finishing_cost: 0, labor_cost: 0, other_cost: 0,
   selling_price: 0, active: true, notes: "", price_change_note: ""
 };
@@ -26,6 +26,9 @@ export default function ProductPricing() {
   const [history, setHistory] = useState([]);
   const [historyProduct, setHistoryProduct] = useState(null);
   const [filter, setFilter] = useState("active");
+  const [catalogPreview, setCatalogPreview] = useState(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogImporting, setCatalogImporting] = useState(false);
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("smp_product_admin_key") || "";
@@ -107,6 +110,52 @@ export default function ProductPricing() {
     } catch (err) { setError(err.message); }
   }
 
+  const slug = (value = "") => String(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+  async function loadCatalogPreview() {
+    setCatalogLoading(true); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/product-catalog-import", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data.products)) throw new Error("Gagal mengambil katalog website.");
+      const rows = data.products.flatMap((product) => {
+        const variants = Array.isArray(product.variants) && product.variants.length ? product.variants : [{ label: "Harga perlu konfirmasi", selling_price: 0 }];
+        return variants.map((variant) => {
+          const productName = String(product.product_name || "").replace(/^Cetak\s+/i, "").trim();
+          const sku = [product.product_slug || slug(productName), slug(variant.label || "standard")].filter(Boolean).join("-").toUpperCase();
+          const estimate = Boolean(product.price_estimate);
+          const price = estimate ? 0 : Number(variant.selling_price || 0);
+          return { sku, product_name: productName, category: product.category || "Lainnya", variant: variant.label || "Standard",
+            unit: product.unit || "pcs", moq: Number(product.moq || 1), selling_price: price,
+            active: price > 0, image_url: product.image_url || "", estimate };
+        });
+      });
+      const existing = new Set(products.map((p) => String(p.sku || "").toUpperCase()));
+      setCatalogPreview({ rows, newRows: rows.filter((row) => !existing.has(row.sku)), duplicateCount: rows.filter((row) => existing.has(row.sku)).length });
+    } catch (err) { setError(err.message || "Gagal memuat katalog."); }
+    finally { setCatalogLoading(false); }
+  }
+
+  async function importCatalog() {
+    if (!catalogPreview?.newRows?.length) return;
+    setCatalogImporting(true); setError(""); setNotice("");
+    let imported = 0, failed = 0;
+    for (const row of catalogPreview.newRows) {
+      const payload = { ...row, material_cost: 0, print_cost: 0, finishing_cost: 0, labor_cost: 0, other_cost: 0,
+        notes: "Diimpor dari katalog website. HPP belum diisi." + (row.estimate || !row.selling_price ? " Harga perlu dikonfirmasi admin." : "") };
+      try {
+        const response = await request("", { method: "POST", body: JSON.stringify(payload) });
+        if (response.ok) imported++;
+        else if (response.status === 409) failed++;
+        else failed++;
+      } catch { failed++; }
+    }
+    await loadProducts();
+    setCatalogPreview(null);
+    setNotice("Import selesai: " + imported + " SKU ditambahkan" + (failed ? ", " + failed + " dilewati/gagal." : ".") + " Biaya produksi masih perlu dilengkapi.");
+    setCatalogImporting(false);
+  }
+
   async function showHistory(product) {
     setHistoryProduct(product); setHistory([]);
     try {
@@ -148,7 +197,7 @@ export default function ProductPricing() {
     <section className="hub-page product-pricing">
       <header className="pp-heading">
         <div><span className="page-eyebrow">INTERNAL CATALOG CONTROL</span><h1>Product & Pricing</h1><p>Satu sumber data untuk biaya, harga jual, MOQ, dan margin setiap produk.</p></div>
-        <div className="pp-actions"><button className="btn-secondary" onClick={loadProducts} disabled={loading}><RefreshCw size={15}/> Refresh</button><button className="btn-secondary" onClick={logout}><KeyRound size={15}/> Lock</button></div>
+        <div className="pp-actions"><button className="btn-secondary" onClick={loadCatalogPreview} disabled={catalogLoading}><Download size={15}/>{catalogLoading ? "Mengambil katalog…" : "Import katalog website"}</button><button className="btn-secondary" onClick={loadProducts} disabled={loading}><RefreshCw size={15}/> Refresh</button><button className="btn-secondary" onClick={logout}><KeyRound size={15}/> Lock</button></div>
       </header>
 
       <div className="pp-metrics">
@@ -156,6 +205,8 @@ export default function ProductPricing() {
         <article><span>Rata-rata gross margin</span><b>{totals.averageMargin.toFixed(1)}%</b></article>
         <article><span>Total SKU tersimpan</span><b>{totals.total}</b></article>
       </div>
+
+      {catalogPreview && <div className="panel pp-import"><div className="panel-head"><div><b>Preview import katalog</b><small>{catalogPreview.newRows.length} SKU baru · {catalogPreview.duplicateCount} SKU sudah ada dan tidak akan ditimpa</small></div><button className="btn-secondary" onClick={()=>setCatalogPreview(null)}><X size={14}/> Tutup</button></div><div className="pp-import-grid">{catalogPreview.newRows.map((row)=><article key={row.sku}>{row.image_url ? <img src={row.image_url} alt={row.product_name} loading="lazy"/> : <span className="pp-image-fallback"><ImageIcon size={22}/></span>}<div><b>{row.product_name}</b><small>{row.variant} · {row.sku}</small><small>{row.selling_price ? money(row.selling_price) + " / " + row.unit : "Harga perlu konfirmasi admin"}</small></div></article>)}</div><p className="pp-import-note">Gambar dan data produk diambil dari katalog website. Harga perkiraan tidak diaktifkan sebagai harga jual. HPP diisi belakangan. SKU yang sudah ada tidak akan ditimpa.</p><div className="pp-form-actions"><button className="btn-primary" onClick={importCatalog} disabled={catalogImporting || !catalogPreview.newRows.length}><Download size={15}/>{catalogImporting ? "Mengimpor…" : "Import " + catalogPreview.newRows.length + " SKU baru"}</button></div></div>}
 
       <div className="pp-layout">
         <form className="panel pp-form" onSubmit={saveProduct}>
@@ -166,6 +217,7 @@ export default function ProductPricing() {
             <label>Kategori<select value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>{["Outdoor & Banner","Atribut & Kantor","Merchandise & Event","Packaging & Buku","Lainnya"].map(v=><option key={v}>{v}</option>)}</select></label>
             <label>Varian / spesifikasi<input value={form.variant||""} onChange={e=>setForm({...form,variant:e.target.value})} placeholder="Flexi 280 gsm"/></label>
             <div className="pp-two"><label>Satuan<input value={form.unit} onChange={e=>setForm({...form,unit:e.target.value})} placeholder="m² / pcs / rim"/></label><label>MOQ<input type="number" min="0" step="1" value={form.moq} onChange={e=>setForm({...form,moq:e.target.value})}/></label></div>
+            <label>URL gambar produk<input value={form.image_url||""} onChange={e=>setForm({...form,image_url:e.target.value})} placeholder="https://…"/></label>{form.image_url && <img className="pp-form-image" src={form.image_url} alt="Preview produk"/>}
             <div className="pp-cost-title">Biaya produksi per satuan</div>
             <div className="pp-two"><label>Bahan baku (Rp)<input type="number" min="0" value={form.material_cost} onChange={e=>setForm({...form,material_cost:e.target.value})}/></label><label>Biaya cetak (Rp)<input type="number" min="0" value={form.print_cost} onChange={e=>setForm({...form,print_cost:e.target.value})}/></label></div>
             <div className="pp-two"><label>Finishing (Rp)<input type="number" min="0" value={form.finishing_cost} onChange={e=>setForm({...form,finishing_cost:e.target.value})}/></label><label>Tenaga kerja (Rp)<input type="number" min="0" value={form.labor_cost} onChange={e=>setForm({...form,labor_cost:e.target.value})}/></label></div>
@@ -182,7 +234,7 @@ export default function ProductPricing() {
           <div className="panel-head"><div><b>Master produk</b><small>{visible.length} SKU ditampilkan</small></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="active">Aktif</option><option value="all">Semua</option><option value="archived">Diarsipkan</option></select></div>
           {error && <div className="pp-alert">{error}</div>}{notice && <div className="pp-notice">{notice}</div>}
           <div className="pp-table-wrap"><table><thead><tr><th>Produk / SKU</th><th>Biaya</th><th>Harga jual</th><th>Profit / margin</th><th>Aksi</th></tr></thead><tbody>
-            {visible.map(p=><tr key={p.id}><td><b>{p.product_name}</b><small>{p.sku} · {p.category}</small><small>{p.variant || "Standard"} · MOQ {p.moq} {p.unit}</small></td><td>{money(p.unit_cost)}</td><td>{money(p.selling_price)}</td><td><b className={p.gross_profit>=0?"positive":"negative"}>{money(p.gross_profit)}</b><small>{Number(p.gross_margin_percent||0).toFixed(1)}% margin</small></td><td><div className="pp-row-actions"><button type="button" onClick={()=>editProduct(p)}>Edit</button><button type="button" onClick={()=>showHistory(p)} title="Riwayat harga"><History size={14}/></button>{p.active && <button type="button" onClick={()=>archiveProduct(p)} title="Arsipkan"><Archive size={14}/></button>}</div></td></tr>)}
+            {visible.map(p=><tr key={p.id}><td><div className="pp-product-cell">{p.image_url ? <img src={p.image_url} alt={p.product_name} loading="lazy"/> : <span className="pp-image-fallback"><Package size={18}/></span>}<div><b>{p.product_name}</b><small>{p.sku} · {p.category}</small><small>{p.variant || "Standard"} · MOQ {p.moq} {p.unit}</small></div></div></td><td>{money(p.unit_cost)}</td><td>{money(p.selling_price)}</td><td><b className={p.gross_profit>=0?"positive":"negative"}>{money(p.gross_profit)}</b><small>{Number(p.gross_margin_percent||0).toFixed(1)}% margin</small></td><td><div className="pp-row-actions"><button type="button" onClick={()=>editProduct(p)}>Edit</button><button type="button" onClick={()=>showHistory(p)} title="Riwayat harga"><History size={14}/></button>{p.active && <button type="button" onClick={()=>archiveProduct(p)} title="Arsipkan"><Archive size={14}/></button>}</div></td></tr>)}
             {!visible.length && <tr><td colSpan="5"><div className="pp-empty">{loading ? "Memuat data…" : "Belum ada SKU. Tambahkan produk pertama dari formulir."}</div></td></tr>}
           </tbody></table></div>
           {historyProduct && <div className="pp-history"><div className="panel-head"><div><b>Riwayat harga · {historyProduct.product_name}</b><small>Perubahan biaya dan harga jual</small></div><button className="btn-secondary" onClick={()=>setHistoryProduct(null)}>Tutup</button></div>{history.length ? history.map(h=><div className="pp-history-row" key={h.id}><span>{new Date(h.changed_at).toLocaleString("id-ID")}</span><b>{money(h.old_selling_price)} → {money(h.new_selling_price)}</b><small>{h.note || "Tidak ada catatan"}</small></div>) : <p className="pp-empty">Belum ada riwayat perubahan.</p>}</div>}
