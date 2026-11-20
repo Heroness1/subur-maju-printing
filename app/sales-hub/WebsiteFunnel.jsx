@@ -23,6 +23,7 @@ export default function WebsiteFunnel() {
   const [readKey, setReadKey] = useState("");
   const [hasReadKey, setHasReadKey] = useState(false);
   const [keyInput, setKeyInput] = useState("");
+  const [verifyingKey, setVerifyingKey] = useState(false);
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("smp_saleshub_funnel_read_key") || "";
@@ -48,12 +49,38 @@ export default function WebsiteFunnel() {
 
   useEffect(() => { if (hasReadKey) load(); }, [period, hasReadKey, readKey]);
 
-  function connectReadKey(event) {
+  async function connectReadKey(event) {
     event.preventDefault();
     const value = keyInput.trim();
-    if (!value) return;
-    window.sessionStorage.setItem("smp_saleshub_funnel_read_key", value);
-    setReadKey(value); setHasReadKey(true); setKeyInput("");
+    if (!value || verifyingKey) return;
+
+    setVerifyingKey(true);
+    setError("");
+    try {
+      const response = await fetch("/api/funnel-events?limit=1", {
+        method: "GET",
+        cache: "no-store",
+        headers: { Authorization: "Bearer " + value },
+      });
+
+      if (response.status === 401) {
+        throw new Error("Kunci akses salah. Periksa SALESHUB_FUNNEL_READ_KEY di Vercel.");
+      }
+      if (!response.ok) {
+        throw new Error(response.status === 503
+          ? "API SalesHub belum dikonfigurasi."
+          : "Kunci belum bisa diverifikasi. Periksa konfigurasi API lalu coba lagi.");
+      }
+
+      window.sessionStorage.setItem("smp_saleshub_funnel_read_key", value);
+      setReadKey(value);
+      setHasReadKey(true);
+      setKeyInput("");
+    } catch (err) {
+      setError(err.message || "Gagal memverifikasi kunci akses.");
+    } finally {
+      setVerifyingKey(false);
+    }
   }
   function disconnectReadKey() {
     window.sessionStorage.removeItem("smp_saleshub_funnel_read_key");
@@ -99,7 +126,7 @@ export default function WebsiteFunnel() {
         <div className="wf-actions"><select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="7">7 hari</option><option value="30">30 hari</option><option value="90">90 hari</option></select><button className="btn-secondary" onClick={load} disabled={loading}><RefreshCw size={15}/> Refresh</button><button className="btn-secondary" onClick={exportCsv} disabled={!events.length}><ArrowDownToLine size={15}/> CSV</button></div>
       </div>
 
-      {!hasReadKey ? <form className="wf-error" onSubmit={connectReadKey}><label htmlFor="wf-read-key">Masukkan kunci akses dashboard funnel</label><div className="wf-actions"><input id="wf-read-key" type="password" autoComplete="current-password" value={keyInput} onChange={(event) => setKeyInput(event.target.value)} placeholder="Kunci akses dashboard" required /><button className="btn-secondary" type="submit">Buka data funnel</button></div><small>Kunci hanya disimpan di session browser ini.</small></form> : <div className="wf-actions"><button className="btn-secondary" onClick={disconnectReadKey}>Kunci dashboard</button></div>}
+      {!hasReadKey ? <form className="wf-error" onSubmit={connectReadKey}><label htmlFor="wf-read-key">Masukkan kunci akses dashboard funnel</label><div className="wf-actions"><input id="wf-read-key" type="password" autoComplete="current-password" value={keyInput} onChange={(event) => setKeyInput(event.target.value)} placeholder="Kunci akses dashboard" required /><button className="btn-secondary" type="submit" disabled={verifyingKey}>{verifyingKey ? "Memverifikasi…" : "Buka data funnel"}</button></div><small>Kunci hanya disimpan di session browser ini.</small></form> : <div className="wf-actions"><button className="btn-secondary" onClick={disconnectReadKey}>Kunci dashboard</button></div>}
       {error && <div className="wf-error">{error} Pastikan migration D1 dan environment variable sudah dipasang.</div>}
       {hasReadKey ? <>
       <div className="wf-metrics">
