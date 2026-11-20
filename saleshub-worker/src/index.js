@@ -349,6 +349,124 @@ async function handleOrders(request, env, url) {
   } catch (err) { return jsonResponse(request, env, { error: 'server_error' }, 500); }
 }
 
+
+function productWithMetrics(row) {
+  const unitCost = Number(row.material_cost || 0) + Number(row.print_cost || 0) +
+    Number(row.finishing_cost || 0) + Number(row.labor_cost || 0) + Number(row.other_cost || 0);
+  const sellingPrice = Number(row.selling_price || 0);
+  const grossProfit = sellingPrice - unitCost;
+  return { ...row, moq: Number(row.moq || 0), active: Number(row.active) === 1,
+    unit_cost: unitCost, gross_profit: grossProfit,
+    gross_margin_percent: sellingPrice > 0 ? grossProfit / sellingPrice * 100 : 0 };
+}
+
+function validateProduct(input, partial = false) {
+  const errors = [];
+  const textFields = ['sku','product_name','category','variant','unit','notes'];
+  for (const key of textFields) {
+    if (input[key] !== undefined && input[key] !== null && typeof input[key] !== 'string') errors.push(key + ' must be text');
+  }
+  if (!partial) {
+    for (const key of ['sku','product_name','category']) if (!input[key] || typeof input[key] !== 'string') errors.push(key + ' is required');
+  }
+  for (const key of ['moq','material_cost','print_cost','finishing_cost','labor_cost','other_cost','selling_price']) {
+    if (input[key] !== undefined && (!Number.isFinite(Number(input[key])) || Number(input[key]) < 0)) errors.push(key + ' must be a non-negative number');
+  }
+  if (input.moq !== undefined && !Number.isInteger(Number(input.moq))) errors.push('moq must be an integer');
+  if (input.active !== undefined && ![true,false,0,1].includes(input.active)) errors.push('active must be boolean');
+  return errors;
+}
+
+async function handlePublicProducts(request, env) {
+  if (request.method !== 'GET') return jsonResponse(request, env, { error: 'method_not_allowed' }, 405);
+  try {
+    const { results } = await env.DB.prepare(
+      'SELECT sku, product_name, category, variant, unit, moq, selling_price, updated_at FROM product_master WHERE active = 1 ORDER BY category, product_name, variant'
+    ).all();
+    return jsonResponse(request, env, { products: results });
+  } catch (err) {
+    return jsonResponse(request, env, { error: 'server_error' }, 500);
+  }
+}
+
+async function handleProductMaster(request, env, url) {
+  const parts = url.pathname.split('/').filter(Boolean);
+  const id = parts[2] || null;
+  const isHistory = parts[3] === 'history';
+  try {
+    if (request.method === 'GET' && !id) {
+      const category = url.searchParams.get('category');
+      const active = url.searchParams.get('active');
+      let query = 'SELECT * FROM product_master';
+      const clauses = [], params = [];
+      if (category) { clauses.push('category = ?'); params.push(category); }
+      if (active === 'true' || active === 'false') { clauses.push('active = ?'); params.push(active === 'true' ? 1 : 0); }
+      if (clauses.length) query += ' WHERE ' + clauses.join(' AND ');
+      query += ' ORDER BY category, product_name, variant';
+      const { results } = await env.DB.prepare(query).bind(...params).all();
+      return jsonResponse(request, env, { products: results.map(productWithMetrics) });
+    }
+    if (request.method === 'GET' && id && isHistory) {
+      const { results } = await env.DB.prepare('SELECT * FROM product_price_history WHERE product_id = ? ORDER BY changed_at DESC LIMIT 100').bind(id).all();
+      return jsonResponse(request, env, { history: results });
+    }
+    if (request.method === 'POST' && !id) {
+      const input = await request.json().catch(() => null);
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return jsonResponse(request, env, { error: 'invalid_json' }, 400);
+      const errors = validateProduct(input);
+      if (errors.length) return jsonResponse(request, env, { error: 'validation', details: errors }, 400);
+      const idNew = 'product-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
+      await env.DB.prepare(`INSERT INTO product_master
+        (id,sku,product_name,category,variant,unit,moq,material_cost,print_cost,finishing_cost,labor_cost,other_cost,selling_price,active,notes)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+          idNew,input.sku.trim(),input.product_name.trim(),input.category.trim(),input.variant || null,
+          input.unit || 'pcs',Number(input.moq ?? 1),Number(input.material_cost ?? 0),Number(input.print_cost ?? 0),
+          Number(input.finishing_cost ?? 0),Number(input.labor_cost ?? 0),Number(input.other_cost ?? 0),
+          Number(input.selling_price ?? 0),input.active === false ? 0 : 1,input.notes || null
+        ).run();
+      const row = await env.DB.prepare('SELECT * FROM product_master WHERE id = ?').bind(idNew).first();
+      return jsonResponse(request, env, { product: productWithMetrics(row) }, 201);
+    }
+    if (request.method === 'PATCH' && id && !isHistory) {
+      const input = await request.json().catch(() => null);
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return jsonResponse(request, env, { error: 'invalid_json' }, 400);
+      const errors = validateProduct(input, true);
+      if (errors.length) return jsonResponse(request, env, { error: 'validation', details: errors }, 400);
+      const old = await env.DB.prepare('SELECT * FROM product_master WHERE id = ?').bind(id).first();
+      if (!old) return jsonResponse(request, env, { error: 'not_found' }, 404);
+      const fields = ['sku','product_name','category','variant','unit','moq','material_cost','print_cost','finishing_cost','labor_cost','other_cost','selling_price','active','notes'];
+      const updates = {};
+      for (const key of fields) if (input[key] !== undefined) updates[key] = key === 'active' ? (input[key] ? 1 : 0) : input[key];
+      if (!Object.keys(updates).length) return jsonResponse(request, env, { error: 'no_fields_to_update' }, 400);
+      const next = { ...old, ...updates };
+      const oldCost = ['material_cost','print_cost','finishing_cost','labor_cost','other_cost'].reduce((sum,k)=>sum+Number(old[k]||0),0);
+      const newCost = ['material_cost','print_cost','finishing_cost','labor_cost','other_cost'].reduce((sum,k)=>sum+Number(next[k]||0),0);
+      if (Number(old.selling_price) !== Number(next.selling_price) || oldCost !== newCost) {
+        await env.DB.prepare(`INSERT INTO product_price_history
+          (id,product_id,old_selling_price,new_selling_price,old_unit_cost,new_unit_cost,note)
+          VALUES (?,?,?,?,?,?,?)`).bind(
+            'price-history-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+            id,Number(old.selling_price),Number(next.selling_price),oldCost,newCost,
+            typeof input.price_change_note === 'string' ? input.price_change_note.slice(0,500) : null
+          ).run();
+      }
+      const set = Object.keys(updates).map(k=>k+' = ?').join(', ');
+      await env.DB.prepare('UPDATE product_master SET '+set+', updated_at = strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\') WHERE id = ?')
+        .bind(...Object.values(updates),id).run();
+      const row = await env.DB.prepare('SELECT * FROM product_master WHERE id = ?').bind(id).first();
+      return jsonResponse(request, env, { product: productWithMetrics(row) });
+    }
+    if (request.method === 'DELETE' && id && !isHistory) {
+      const result = await env.DB.prepare('UPDATE product_master SET active = 0, updated_at = strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\') WHERE id = ?').bind(id).run();
+      if (!result.meta.changes) return jsonResponse(request, env, { error: 'not_found' }, 404);
+      return jsonResponse(request, env, { archived: true });
+    }
+    return jsonResponse(request, env, { error: 'method_not_allowed' }, 405);
+  } catch (err) {
+    return jsonResponse(request, env, { error: 'server_error' }, 500);
+  }
+}
+
 const FUNNEL_EVENTS = new Set([
   'whatsapp_click', 'category_selected', 'product_selected', 'add_to_cart',
   'begin_checkout', 'order_details_generated', 'order_request_prepared',
@@ -562,7 +680,8 @@ export default {
       return handleFunnelIntake(request, env);
     }
 
-    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations') && !url.pathname.startsWith('/api/funnel-events') && url.pathname !== '/api/orders' && url.pathname !== '/api/campaign-spend') {
+    if (url.pathname === '/api/public/products') { return handlePublicProducts(request, env); }
+    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations') && !url.pathname.startsWith('/api/funnel-events') && !url.pathname.startsWith('/api/product-master') && url.pathname !== '/api/orders' && url.pathname !== '/api/campaign-spend') {
       return jsonResponse(request, env, { error: 'not_found' }, 404);
     }
 
@@ -572,6 +691,10 @@ export default {
 
     if (url.pathname === '/api/funnel-events') {
       return handleFunnelEvents(request, env, url);
+    }
+
+    if (url.pathname.startsWith('/api/product-master')) {
+      return handleProductMaster(request, env, url);
     }
 
     if (url.pathname === '/api/orders') {
