@@ -381,7 +381,7 @@ async function handlePublicProducts(request, env) {
   if (request.method !== 'GET') return jsonResponse(request, env, { error: 'method_not_allowed' }, 405);
   try {
     const { results } = await env.DB.prepare(
-      'SELECT sku, product_name, category, variant, unit, moq, selling_price, updated_at FROM product_master WHERE active = 1 ORDER BY category, product_name, variant'
+      'SELECT sku, product_name, category, variant, unit, moq, selling_price, updated_at FROM product_master WHERE active = 1 AND selling_price > 0 ORDER BY category, product_name, variant'
     ).all();
     return jsonResponse(request, env, { products: results });
   } catch (err) {
@@ -415,6 +415,8 @@ async function handleProductMaster(request, env, url) {
       if (!input || typeof input !== 'object' || Array.isArray(input)) return jsonResponse(request, env, { error: 'invalid_json' }, 400);
       const errors = validateProduct(input);
       if (errors.length) return jsonResponse(request, env, { error: 'validation', details: errors }, 400);
+      const duplicateSku = await env.DB.prepare('SELECT id FROM product_master WHERE sku = ?').bind(input.sku.trim()).first();
+      if (duplicateSku) return jsonResponse(request, env, { error: 'duplicate_sku' }, 409);
       const idNew = 'product-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
       await env.DB.prepare(`INSERT INTO product_master
         (id,sku,product_name,category,variant,unit,moq,material_cost,print_cost,finishing_cost,labor_cost,other_cost,selling_price,active,notes)
@@ -434,6 +436,10 @@ async function handleProductMaster(request, env, url) {
       if (errors.length) return jsonResponse(request, env, { error: 'validation', details: errors }, 400);
       const old = await env.DB.prepare('SELECT * FROM product_master WHERE id = ?').bind(id).first();
       if (!old) return jsonResponse(request, env, { error: 'not_found' }, 404);
+      if (input.sku && input.sku.trim() !== old.sku) {
+        const duplicateSku = await env.DB.prepare('SELECT id FROM product_master WHERE sku = ? AND id != ?').bind(input.sku.trim(), id).first();
+        if (duplicateSku) return jsonResponse(request, env, { error: 'duplicate_sku' }, 409);
+      }
       const fields = ['sku','product_name','category','variant','unit','moq','material_cost','print_cost','finishing_cost','labor_cost','other_cost','selling_price','active','notes'];
       const updates = {};
       for (const key of fields) if (input[key] !== undefined) updates[key] = key === 'active' ? (input[key] ? 1 : 0) : input[key];
