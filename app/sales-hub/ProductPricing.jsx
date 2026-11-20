@@ -110,7 +110,7 @@ export default function ProductPricing() {
     } catch (err) { setError(err.message); }
   }
 
-  const slug = (value = "") => String(value).toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  const slug = (value = "") => String(value).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
   async function loadCatalogPreview() {
     setCatalogLoading(true); setError(""); setNotice("");
@@ -121,7 +121,7 @@ export default function ProductPricing() {
       const rows = data.products.flatMap((product) => {
         const variants = Array.isArray(product.variants) && product.variants.length ? product.variants : [{ label: "Harga perlu konfirmasi", selling_price: 0 }];
         return variants.map((variant) => {
-          const productName = String(product.product_name || "").replace(/^Cetak\\s+/i, "").trim();
+          const productName = String(product.product_name || "").replace(/^Cetak\s+/i, "").trim();
           const sku = [product.product_slug || slug(productName), slug(variant.label || "standard")].filter(Boolean).join("-").toUpperCase();
           const estimate = Boolean(product.price_estimate);
           const price = estimate ? 0 : Number(variant.selling_price || 0);
