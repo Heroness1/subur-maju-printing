@@ -14,8 +14,7 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "saleshub-db"
-# Fill this in after `wrangler d1 create saleshub-db`:
-# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+database_id = "f5af310d-5bac-4469-9952-2b38887fc5f5"
 
 [vars]
 # Frontend origin allowed to call this API (CORS). Change if the
