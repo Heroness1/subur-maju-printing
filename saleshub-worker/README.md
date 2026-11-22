@@ -75,14 +75,17 @@ On the SalesHub Vercel project, configure:
 - `SALESHUB_INTAKE_API_KEY` — same value as the Worker intake secret.
 - `SITE_FUNNEL_SHARED_SECRET` — a separate long random secret shared only with the marketing website's server-side proxy.
 
-On the marketing website's Vercel project, configure:
+On the public marketing website's Vercel project configure:
 
-- `SALESHUB_FUNNEL_INGEST_URL` — SalesHub Vercel URL plus `/api/intake/funnel-events`.
-- `SALESHUB_FUNNEL_INGEST_KEY` — same value as `SITE_FUNNEL_SHARED_SECRET`.
+- `NEXT_PUBLIC_SALESHUB_API_URL` — deployed Worker URL. This URL is public; it is not a secret.
+- Keep `SALESHUB_FUNNEL_INGEST_URL` and `SALESHUB_FUNNEL_INGEST_KEY` only if the existing server-side interaction-event forwarding flow is used.
 
-After environment changes, redeploy both Vercel projects. The website-side
-server proxy still needs to be added/configured in the marketing website
-repository; do not send a secret from browser JavaScript.
+Set `ALLOWED_ORIGINS` in `wrangler.toml` to the exact production website origins
+(apex and www). The page-view endpoint accepts only the `page_view` schema,
+checks the browser Origin against this allowlist, and limits the request body.
+Origin validation is a browser-origin guard, not authentication; the endpoint
+is intentionally public for visitor browsers. Do not expose Worker secrets.
+After environment changes, redeploy the Worker and the Vercel website.
 
 ## Frontend persistence
 
