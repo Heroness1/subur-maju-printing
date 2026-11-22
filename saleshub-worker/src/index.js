@@ -592,9 +592,10 @@ async function handleVisitorPageView(request, env) {
   if (!visitorAllowedOrigins(env).has(origin)) {
     return jsonResponse(request, env, { error: "origin_not_allowed" }, 403);
   }
-  const length = Number(request.headers.get("Content-Length") || 0);
-  if (length > 4000) return jsonResponse(request, env, { error: "payload_too_large" }, 413);
-  const input = await request.json().catch(() => null);
+  const rawBody = await request.text();
+  if (rawBody.length > 4000) return jsonResponse(request, env, { error: "payload_too_large" }, 413);
+  let input;
+  try { input = JSON.parse(rawBody); } catch { input = null; }
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return jsonResponse(request, env, { error: "invalid_json" }, 400);
   }
