@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 const WORKER_URL = (process.env.NEXT_PUBLIC_SALESHUB_API_URL || "").replace(/\/$/, "");
@@ -24,12 +24,14 @@ function storedId(storage, key) {
 
 export default function VisitorTracker() {
   const pathname = usePathname();
+  const lastTrackedPath = useRef("");
 
   useEffect(() => {
-    if (!WORKER_URL || !pathname) return;
+    if (!WORKER_URL || !pathname || lastTrackedPath.current === pathname) return;
     // Never count internal CRM pages or API routes as public website traffic.
     if (pathname.startsWith("/sales-hub") || pathname.startsWith("/saleshub") || pathname.startsWith("/api")) return;
 
+    lastTrackedPath.current = pathname;
     let visitorId;
     let sessionId;
     try {
