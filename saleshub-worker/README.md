@@ -10,8 +10,10 @@ cannot bind D1 directly, so this Worker is the API layer in front of D1.
 - `GET/PATCH/DELETE /api/prospects/:id` — prospect CRUD.
 - `GET/POST /api/quotations` — list/create quotations.
 - `GET/PATCH/DELETE /api/quotations/:id` — quotation CRUD.
-- `POST /api/intake/funnel-events` — server-to-server website event intake (Bearer `SALESHUB_INTAKE_API_KEY`).
-- `GET /api/funnel-events?from=&limit=` — internal reporting (Bearer `SALESHUB_API_KEY`).
+- `POST /api/intake/funnel-events` — server-to-server interaction-event intake (Bearer `SALESHUB_INTAKE_API_KEY`).
+- `POST /api/intake/page-view` — public, origin-allowlisted first-party page-view intake (no browser secret).
+- `GET /api/funnel-events?from=&limit=` — interaction-event reporting (Bearer `SALESHUB_API_KEY`).
+- `GET /api/visitor-analytics?from=&to=` — aggregated visitor analytics (Bearer `SALESHUB_API_KEY`).
 
 Funnel events are behavioral telemetry, not sales leads. In particular,
 `whatsapp_click` is a click/open intent and does not prove a WhatsApp
@@ -35,6 +37,20 @@ npx wrangler d1 execute saleshub-db --remote --command "SELECT name FROM sqlite_
 Do not re-run migrations 001 or 002 if they are already applied. The
 migration 003 statement is additive and does not alter existing prospects
 or quotations.
+
+Visitor analytics uses migration 008. Back up D1 first, then apply it once:
+
+```bash
+npx wrangler d1 export saleshub-db --remote --output backup-before-visitor-analytics.sql
+npx wrangler d1 execute saleshub-db --remote --file=./migrations/008_visitor_page_views.sql
+npx wrangler d1 execute saleshub-db --remote --command "SELECT name FROM sqlite_master WHERE type='table' AND name='visitor_page_views';"
+```
+
+Do not re-run migration 008 if it is already recorded in `schema_migrations`.
+The visitor table is separate from `funnel_events`; page views never create
+prospects or sales leads. It stores random visitor/session IDs, page paths,
+UTM attribution, coarse Cloudflare location, device class, and bot status.
+It does not store raw IP addresses, full user-agent strings, names, or emails.
 
 ## Secrets and deployment
 
