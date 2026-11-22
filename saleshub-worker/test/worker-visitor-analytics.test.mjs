@@ -30,10 +30,13 @@ async function call(env, path, { method = "GET", body, key = API_KEY, origin = "
   if (key) headers.Authorization = "Bearer " + key;
   if (origin) headers.Origin = origin;
   if (userAgent) headers["User-Agent"] = userAgent;
-  const response = await worker.fetch(new Request("https://worker.test" + path, {
+  const request = new Request("https://worker.test" + path, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-    cf: { country: "ID", city: "Jakarta", region: "DKI Jakarta", timezone: "Asia/Jakarta" },
-  }), env);
+  });
+  Object.defineProperty(request, "cf", {
+    value: { country: "ID", city: "Jakarta", region: "DKI Jakarta", timezone: "Asia/Jakarta" },
+  });
+  const response = await worker.fetch(request, env);
   return { status: response.status, json: await response.json() };
 }
 
