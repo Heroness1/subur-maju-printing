@@ -127,3 +127,36 @@ CREATE INDEX IF NOT EXISTS idx_funnel_events_landing ON funnel_events(landing_pa
 
 CREATE INDEX IF NOT EXISTS idx_quotations_prospect ON quotations (prospect_id);
 CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items (quotation_id);
+
+-- First-party anonymous visitor page views (migration 008 for existing databases).
+CREATE TABLE IF NOT EXISTS visitor_page_views (
+  id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL UNIQUE,
+  visitor_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  page_path TEXT NOT NULL,
+  page_title TEXT,
+  referrer_host TEXT,
+  source TEXT,
+  medium TEXT,
+  campaign TEXT,
+  content TEXT,
+  term TEXT,
+  gclid TEXT,
+  gbraid TEXT,
+  wbraid TEXT,
+  country TEXT,
+  city TEXT,
+  region TEXT,
+  timezone TEXT,
+  device_type TEXT NOT NULL DEFAULT 'unknown',
+  bot_status TEXT NOT NULL DEFAULT 'unknown',
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_visitor_views_date ON visitor_page_views(occurred_at);
+CREATE INDEX IF NOT EXISTS idx_visitor_views_visitor ON visitor_page_views(visitor_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_visitor_views_session ON visitor_page_views(session_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_visitor_views_path ON visitor_page_views(page_path, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_visitor_views_source ON visitor_page_views(source, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_visitor_views_bot ON visitor_page_views(bot_status, occurred_at);

@@ -20,3 +20,4 @@ database_id = "f5af310d-5bac-4469-9952-2b38887fc5f5"
 # Frontend origin allowed to call this API (CORS). Change if the
 # production domain changes; localhost is allowed by the code for dev.
 ALLOWED_ORIGIN = "https://subur-maju-printing.vercel.app"
+ALLOWED_ORIGINS = "https://suburmajuprinting.com,https://www.suburmajuprinting.com,https://subur-maju-printing.vercel.app"

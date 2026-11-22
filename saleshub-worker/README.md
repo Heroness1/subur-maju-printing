@@ -10,8 +10,10 @@ cannot bind D1 directly, so this Worker is the API layer in front of D1.
 - `GET/PATCH/DELETE /api/prospects/:id` — prospect CRUD.
 - `GET/POST /api/quotations` — list/create quotations.
 - `GET/PATCH/DELETE /api/quotations/:id` — quotation CRUD.
-- `POST /api/intake/funnel-events` — server-to-server website event intake (Bearer `SALESHUB_INTAKE_API_KEY`).
-- `GET /api/funnel-events?from=&limit=` — internal reporting (Bearer `SALESHUB_API_KEY`).
+- `POST /api/intake/funnel-events` — server-to-server interaction-event intake (Bearer `SALESHUB_INTAKE_API_KEY`).
+- `POST /api/intake/page-view` — public, origin-allowlisted first-party page-view intake (no browser secret).
+- `GET /api/funnel-events?from=&limit=` — interaction-event reporting (Bearer `SALESHUB_API_KEY`).
+- `GET /api/visitor-analytics?from=&to=` — aggregated visitor analytics (Bearer `SALESHUB_API_KEY`).
 
 Funnel events are behavioral telemetry, not sales leads. In particular,
 `whatsapp_click` is a click/open intent and does not prove a WhatsApp
@@ -36,6 +38,20 @@ Do not re-run migrations 001 or 002 if they are already applied. The
 migration 003 statement is additive and does not alter existing prospects
 or quotations.
 
+Visitor analytics uses migration 008. Back up D1 first, then apply it once:
+
+```bash
+npx wrangler d1 export saleshub-db --remote --output backup-before-visitor-analytics.sql
+npx wrangler d1 execute saleshub-db --remote --file=./migrations/008_visitor_page_views.sql
+npx wrangler d1 execute saleshub-db --remote --command "SELECT name FROM sqlite_master WHERE type='table' AND name='visitor_page_views';"
+```
+
+Do not re-run migration 008 if it is already recorded in `schema_migrations`.
+The visitor table is separate from `funnel_events`; page views never create
+prospects or sales leads. It stores random visitor/session IDs, page paths,
+UTM attribution, coarse Cloudflare location, device class, and bot status.
+It does not store raw IP addresses, full user-agent strings, names, or emails.
+
 ## Secrets and deployment
 
 Set two separate Worker secrets. Never commit either value:
@@ -59,14 +75,17 @@ On the SalesHub Vercel project, configure:
 - `SALESHUB_INTAKE_API_KEY` — same value as the Worker intake secret.
 - `SITE_FUNNEL_SHARED_SECRET` — a separate long random secret shared only with the marketing website's server-side proxy.
 
-On the marketing website's Vercel project, configure:
+On the public marketing website's Vercel project configure:
 
-- `SALESHUB_FUNNEL_INGEST_URL` — SalesHub Vercel URL plus `/api/intake/funnel-events`.
-- `SALESHUB_FUNNEL_INGEST_KEY` — same value as `SITE_FUNNEL_SHARED_SECRET`.
+- `NEXT_PUBLIC_SALESHUB_API_URL` — deployed Worker URL. This URL is public; it is not a secret.
+- Keep `SALESHUB_FUNNEL_INGEST_URL` and `SALESHUB_FUNNEL_INGEST_KEY` only if the existing server-side interaction-event forwarding flow is used.
 
-After environment changes, redeploy both Vercel projects. The website-side
-server proxy still needs to be added/configured in the marketing website
-repository; do not send a secret from browser JavaScript.
+Set `ALLOWED_ORIGINS` in `wrangler.toml` to the exact production website origins
+(apex and www). The page-view endpoint accepts only the `page_view` schema,
+checks the browser Origin against this allowlist, and limits the request body.
+Origin validation is a browser-origin guard, not authentication; the endpoint
+is intentionally public for visitor browsers. Do not expose Worker secrets.
+After environment changes, redeploy the Worker and the Vercel website.
 
 ## Frontend persistence
 

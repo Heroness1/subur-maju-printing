@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Activity, ArrowDownToLine, Globe, RefreshCw, Users, MousePointerClick, ShoppingCart, MessageCircle, MapPin, Package } from "lucide-react";
 import GeoIntelligence from "./GeoIntelligence";
 import ProductPricing from "./ProductPricing";
+import VisitorAnalytics from "./VisitorAnalytics";
 import "./website-funnel.css";
 
 const LABELS = {
@@ -130,6 +131,7 @@ export default function WebsiteFunnel() {
       </div>
       <div className="wf-tabs" role="tablist" aria-label="Website funnel views">
         <button type="button" role="tab" aria-selected={activeTab === "funnel"} className={activeTab === "funnel" ? "active" : ""} onClick={() => setActiveTab("funnel")}><Activity size={15}/> Funnel overview</button>
+        <button type="button" role="tab" aria-selected={activeTab === "visitors"} className={activeTab === "visitors" ? "active" : ""} onClick={() => setActiveTab("visitors")}><Users size={15}/> Visitors</button>
         <button type="button" role="tab" aria-selected={activeTab === "geo"} className={activeTab === "geo" ? "active" : ""} onClick={() => setActiveTab("geo")}><MapPin size={15}/> Geo Intelligence <span className="wf-tab-pill">NEW</span></button>
         <button type="button" role="tab" aria-selected={activeTab === "product"} className={activeTab === "product" ? "active" : ""} onClick={() => setActiveTab("product")}><Package size={15}/> Product & Pricing</button>
       </div>
@@ -138,6 +140,7 @@ export default function WebsiteFunnel() {
       {activeTab !== "product" && error && <div className="wf-error">{error} Pastikan migration D1 dan environment variable sudah dipasang.</div>}
       {activeTab === "product" ? <ProductPricing /> : null}
       {hasReadKey && activeTab === "geo" ? <GeoIntelligence onOpenFunnel={() => setActiveTab("funnel")} /> : null}
+      {hasReadKey && activeTab === "visitors" ? <VisitorAnalytics /> : null}
       {hasReadKey && activeTab === "funnel" ? <>
       <div className="wf-metrics">
         <article><span><Activity size={15}/> Total event</span><b>{loading ? "…" : metrics.total.toLocaleString("id-ID")}</b><small>Seluruh interaksi yang terekam</small></article>

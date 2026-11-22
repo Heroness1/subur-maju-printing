@@ -14,6 +14,8 @@
 //   POST   /api/quotations           create a quotation (prospect must exist)
 //   PATCH  /api/quotations/:id       update header fields / replace items in one batch
 //   DELETE /api/quotations/:id       delete header + items in one batch
+//   POST   /api/intake/page-view    public, origin-allowlisted anonymous page views
+//   GET    /api/visitor-analytics    authenticated aggregate visitor analytics
 //   GET    /api/health               no auth, returns { ok: true } only
 
 const STAGES = [
@@ -572,6 +574,119 @@ async function handleFunnelEvents(request, env, url) {
   }
 }
 
+
+// First-party page-view intake is intentionally separate from sales funnel events.
+// It accepts only anonymous page views from the configured website origins.
+function visitorAllowedOrigins(env) {
+  const configured = (env.ALLOWED_ORIGINS || "").split(",").map((value) => value.trim()).filter(Boolean);
+  return new Set([
+    env.ALLOWED_ORIGIN || "https://subur-maju-printing.vercel.app",
+    "https://suburmajuprinting.com",
+    "https://www.suburmajuprinting.com",
+    "http://localhost:3000",
+    ...configured,
+  ]);
+}
+
+async function handleVisitorPageView(request, env) {
+  if (request.method !== "POST") return jsonResponse(request, env, { error: "method_not_allowed" }, 405);
+  const origin = request.headers.get("Origin") || "";
+  if (!visitorAllowedOrigins(env).has(origin)) {
+    return jsonResponse(request, env, { error: "origin_not_allowed" }, 403);
+  }
+  const rawBody = await request.text();
+  if (rawBody.length > 4000) return jsonResponse(request, env, { error: "payload_too_large" }, 413);
+  let input;
+  try { input = JSON.parse(rawBody); } catch { input = null; }
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return jsonResponse(request, env, { error: "invalid_json" }, 400);
+  }
+  const validId = (value) => typeof value === "string" && /^[a-zA-Z0-9_-]{16,80}$/.test(value);
+  if (!validId(input.event_id) || !validId(input.visitor_id) || !validId(input.session_id)) {
+    return jsonResponse(request, env, { error: "invalid_tracking_id" }, 400);
+  }
+  const pagePath = safeText(input.page_path, 1000);
+  if (!pagePath || !pagePath.startsWith("/") || pagePath.includes("?") || pagePath.includes("#") || pagePath.includes("://")) {
+    return jsonResponse(request, env, { error: "invalid_page_path" }, 400);
+  }
+  const pageTitle = safeText(input.page_title, 200);
+  let referrerHost = null;
+  try {
+    if (input.referrer) referrerHost = new URL(String(input.referrer)).hostname.slice(0, 200) || null;
+  } catch {}
+  const ua = request.headers.get("User-Agent") || "";
+  const uaLower = ua.toLowerCase();
+  const botMatch = uaLower.match(/googlebot|bingbot|yandexbot|baiduspider|duckduckbot|facebookexternalhit|twitterbot|linkedinbot|slackbot|crawler|spider|headlesschrome|phantomjs|selenium|playwright|puppeteer|curl\/|wget\/|python-requests|httpclient|go-http-client/);
+  const botStatus = botMatch ? "bot" : ua ? "human_signal" : "unknown";
+  const deviceType = /ipad|tablet/i.test(ua) ? "tablet" : /mobile|android|iphone|ipod/i.test(ua) ? "mobile" : ua ? "desktop" : "unknown";
+  const cf = request.cf || {};
+  const source = safeText(input.utm_source, 200) || referrerHost || "direct";
+  const medium = safeText(input.utm_medium, 200) || (referrerHost ? "referral" : "(none)");
+  const id = "pv-" + input.event_id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 100);
+  try {
+    const result = await env.DB.prepare(
+      `INSERT OR IGNORE INTO visitor_page_views
+       (id,event_id,visitor_id,session_id,occurred_at,page_path,page_title,referrer_host,
+        source,medium,campaign,content,term,gclid,gbraid,wbraid,country,city,region,timezone,device_type,bot_status)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      id, input.event_id, input.visitor_id, input.session_id, new Date().toISOString(),
+      pagePath, pageTitle, referrerHost, source, medium,
+      safeText(input.utm_campaign, 300), safeText(input.utm_content, 300), safeText(input.utm_term, 300),
+      safeText(input.gclid, 500), safeText(input.gbraid, 500), safeText(input.wbraid, 500),
+      safeText(cf.country, 80), safeText(cf.city, 120), safeText(cf.region, 120),
+      safeText(cf.timezone, 80), deviceType, botStatus
+    ).run();
+    return jsonResponse(request, env, { accepted: true, duplicate: result.meta.changes === 0 }, result.meta.changes === 0 ? 200 : 201);
+  } catch (err) {
+    return jsonResponse(request, env, { error: "server_error" }, 500);
+  }
+}
+
+async function handleVisitorAnalytics(request, env, url) {
+  if (request.method !== "GET") return jsonResponse(request, env, { error: "method_not_allowed" }, 405);
+  const now = Date.now();
+  const fromRaw = url.searchParams.get("from");
+  const toRaw = url.searchParams.get("to");
+  const fromDate = fromRaw && Number.isFinite(Date.parse(fromRaw)) ? new Date(fromRaw) : new Date(now - 30 * 86400000);
+  const toDate = toRaw && Number.isFinite(Date.parse(toRaw)) ? new Date(toRaw) : new Date(now);
+  if (fromDate > toDate) return jsonResponse(request, env, { error: "invalid_date_range" }, 400);
+  const from = fromDate.toISOString();
+  const to = toDate.toISOString();
+  try {
+    const base = "occurred_at >= ? AND occurred_at <= ?";
+    const params = [from, to];
+    const [summary, bots, singlePage, pages, sources, countries, devices, daily] = await Promise.all([
+      env.DB.prepare(`SELECT COUNT(*) AS page_views, COUNT(DISTINCT visitor_id) AS visitors, COUNT(DISTINCT session_id) AS sessions FROM visitor_page_views WHERE ${base} AND bot_status != 'bot'`).bind(...params).first(),
+      env.DB.prepare(`SELECT COUNT(*) AS bot_page_views FROM visitor_page_views WHERE ${base} AND bot_status = 'bot'`).bind(...params).first(),
+      env.DB.prepare(`SELECT COUNT(*) AS single_page_sessions FROM (SELECT session_id FROM visitor_page_views WHERE ${base} AND bot_status != 'bot' GROUP BY session_id HAVING COUNT(*) = 1)`).bind(...params).first(),
+      env.DB.prepare(`SELECT page_path, COUNT(*) AS page_views, COUNT(DISTINCT visitor_id) AS visitors FROM visitor_page_views WHERE ${base} AND bot_status != 'bot' GROUP BY page_path ORDER BY page_views DESC LIMIT 10`).bind(...params).all(),
+      env.DB.prepare(`SELECT source, medium, COUNT(*) AS page_views, COUNT(DISTINCT visitor_id) AS visitors FROM visitor_page_views WHERE ${base} AND bot_status != 'bot' GROUP BY source, medium ORDER BY page_views DESC LIMIT 10`).bind(...params).all(),
+      env.DB.prepare(`SELECT country, city, COUNT(*) AS page_views, COUNT(DISTINCT visitor_id) AS visitors FROM visitor_page_views WHERE ${base} AND bot_status != 'bot' AND country IS NOT NULL GROUP BY country, city ORDER BY visitors DESC LIMIT 10`).bind(...params).all(),
+      env.DB.prepare(`SELECT device_type, COUNT(*) AS page_views, COUNT(DISTINCT visitor_id) AS visitors FROM visitor_page_views WHERE ${base} AND bot_status != 'bot' GROUP BY device_type ORDER BY page_views DESC`).bind(...params).all(),
+      env.DB.prepare(`SELECT substr(occurred_at,1,10) AS date, COUNT(*) AS page_views, COUNT(DISTINCT visitor_id) AS visitors FROM visitor_page_views WHERE ${base} AND bot_status != 'bot' GROUP BY substr(occurred_at,1,10) ORDER BY date ASC`).bind(...params).all(),
+    ]);
+    return jsonResponse(request, env, {
+      range: { from, to },
+      summary: {
+        page_views: Number(summary?.page_views || 0),
+        visitors: Number(summary?.visitors || 0),
+        sessions: Number(summary?.sessions || 0),
+        single_page_sessions: Number(singlePage?.single_page_sessions || 0),
+        single_page_session_rate: Number(summary?.sessions || 0) ? Number(singlePage?.single_page_sessions || 0) / Number(summary.sessions) * 100 : 0,
+        bot_page_views: Number(bots?.bot_page_views || 0),
+      },
+      top_pages: pages.results,
+      sources: sources.results,
+      locations: countries.results,
+      devices: devices.results,
+      daily: daily.results,
+    });
+  } catch (err) {
+    return jsonResponse(request, env, { error: "server_error" }, 500);
+  }
+}
+
 const ALLOWED_FIELDS = [
   'company',
   'website',
@@ -603,15 +718,15 @@ const ALLOWED_FIELDS = [
 ];
 
 function corsHeaders(request, env) {
-  const origin = request.headers.get('Origin');
-  const allowed = env.ALLOWED_ORIGIN || 'https://subur-maju-printing.vercel.app';
-  const allowOrigin =
-    origin === allowed || origin === 'http://localhost:3000' ? origin : allowed;
+  const origin = request.headers.get('Origin') || '';
+  const allowed = visitorAllowedOrigins(env);
+  const fallback = env.ALLOWED_ORIGIN || 'https://subur-maju-printing.vercel.app';
   return {
-    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Origin': allowed.has(origin) ? origin : fallback,
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
 }
 
@@ -686,8 +801,12 @@ export default {
       return handleFunnelIntake(request, env);
     }
 
+    if (url.pathname === '/api/intake/page-view') {
+      return handleVisitorPageView(request, env);
+    }
+
     if (url.pathname === '/api/public/products') { return handlePublicProducts(request, env); }
-    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations') && !url.pathname.startsWith('/api/funnel-events') && !url.pathname.startsWith('/api/product-master') && url.pathname !== '/api/orders' && url.pathname !== '/api/campaign-spend') {
+    if (!url.pathname.startsWith('/api/prospects') && !url.pathname.startsWith('/api/quotations') && !url.pathname.startsWith('/api/funnel-events') && url.pathname !== '/api/visitor-analytics' && !url.pathname.startsWith('/api/product-master') && url.pathname !== '/api/orders' && url.pathname !== '/api/campaign-spend') {
       return jsonResponse(request, env, { error: 'not_found' }, 404);
     }
 
@@ -697,6 +816,10 @@ export default {
 
     if (url.pathname === '/api/funnel-events') {
       return handleFunnelEvents(request, env, url);
+    }
+
+    if (url.pathname === '/api/visitor-analytics') {
+      return handleVisitorAnalytics(request, env, url);
     }
 
     if (url.pathname.startsWith('/api/product-master')) {
