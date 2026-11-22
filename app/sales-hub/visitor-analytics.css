@@ -1,0 +1,30 @@
+.visitor-analytics{display:grid;gap:18px;margin-top:18px}
+.va-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:18px}
+.va-heading h2{font-size:25px;margin:5px 0 6px;color:var(--ink,#242424)}
+.va-heading p{margin:0;color:var(--muted,#777);font-size:13px;max-width:620px;line-height:1.6}
+.va-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.va-controls select{border:1px solid var(--line,#ddd);border-radius:9px;padding:9px 12px;background:white;color:inherit}
+.va-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.va-metrics article{border:1px solid var(--line,#e8e5df);border-radius:14px;background:white;padding:16px;display:grid;gap:8px}
+.va-metrics article span{display:flex;align-items:center;gap:7px;color:var(--muted,#777);font-size:12px}
+.va-metrics article b{font-size:28px;letter-spacing:-.04em;color:var(--ink,#242424)}
+.va-metrics article small{font-size:11px;color:var(--muted,#888)}
+.va-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.va-panel{padding:18px;min-width:0}
+.va-daily,.va-list{display:grid;gap:11px;margin-top:16px}
+.va-day{display:grid;grid-template-columns:55px minmax(50px,1fr) 38px;align-items:center;gap:10px;font-size:11px}
+.va-day>span{color:var(--muted,#777)}
+.va-day>i{height:8px;background:#f0eee9;border-radius:99px;overflow:hidden}
+.va-day>i>em{display:block;height:100%;background:#d97736;border-radius:99px;min-width:2px}
+.va-day>b{text-align:right;font-variant-numeric:tabular-nums}
+.va-list>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:center;border-bottom:1px solid var(--line,#eee);padding-bottom:9px;font-size:12px}
+.va-list>div:last-child{border-bottom:0;padding-bottom:0}
+.va-list>div>span{min-width:0;overflow-wrap:anywhere;display:flex;align-items:center;gap:7px}
+.va-list>div>b{font-variant-numeric:tabular-nums}
+.va-list>div>small{grid-column:1/-1;color:var(--muted,#888);font-size:10px}
+.va-sublist{display:grid;gap:8px;border-top:1px solid var(--line,#eee);padding-top:12px;margin-top:12px}
+.va-sublist>div{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--muted,#777)}
+.va-sublist b{color:var(--ink,#242424)}
+.va-note{font-size:11px;line-height:1.6;color:var(--muted,#888);margin:0}
+@media(max-width:900px){.va-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.va-heading{align-items:flex-start;flex-direction:column}.va-grid{grid-template-columns:1fr}.va-metrics article b{font-size:24px}}
