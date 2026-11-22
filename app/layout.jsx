@@ -1,4 +1,5 @@
 import "./globals.css";
+import VisitorTracker from "./VisitorTracker";
 
 export const metadata = {
   title: "Subur Maju Printing | Digital Printing Jakarta Timur",
@@ -22,7 +23,7 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="id">
-      <body>{children}</body>
+      <body><VisitorTracker />{children}</body>
     </html>
   );
 }
