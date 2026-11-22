@@ -83,7 +83,7 @@ export default function Home() {
         <ol className="order-steps"><li><span>01</span><div><strong>Pilih produk</strong><p>Cari produk yang sesuai di katalog.</p></div></li><li><span>02</span><div><strong>Tanya harga</strong><p>Kirim kebutuhan dan tanyakan pilihan bahan atau ukuran.</p></div></li><li><span>03</span><div><strong>Konfirmasi pesanan</strong><p>Sepakati harga, jumlah, dan estimasi sebelum produksi.</p></div></li></ol>
       </section>
 
-      <footer className="site-footer"><a href="#home" className="brand"><span className="brand-icon"><Printer size={19}/></span><span><strong>SUBUR MAJU</strong><small>PRINTING · JAKARTA TIMUR</small></span></a><span className="footer-note">KATALOG PERCETAKAN</span><span className="copyright">© {new Date().getFullYear()} Subur Maju Printing</span></footer>
+      <footer className="site-footer"><a href="#home" className="brand"><span className="brand-icon"><Printer size={19}/></span><span><strong>SUBUR MAJU</strong><small>PRINTING · JAKARTA TIMUR</small></span></a><span className="footer-note">KATALOG PERCETAKAN</span><span className="footer-note">Kami menggunakan data kunjungan anonim untuk memahami penggunaan website.</span><span className="copyright">© {new Date().getFullYear()} Subur Maju Printing</span></footer>
     </main>
   );
 }
