@@ -14,6 +14,8 @@
 //   POST   /api/quotations           create a quotation (prospect must exist)
 //   PATCH  /api/quotations/:id       update header fields / replace items in one batch
 //   DELETE /api/quotations/:id       delete header + items in one batch
+//   POST   /api/intake/page-view    public, origin-allowlisted anonymous page views
+//   GET    /api/visitor-analytics    authenticated aggregate visitor analytics
 //   GET    /api/health               no auth, returns { ok: true } only
 
 const STAGES = [
